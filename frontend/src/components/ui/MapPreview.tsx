@@ -36,6 +36,7 @@ export function MapPreview({ lat, lng, name }: MapPreviewProps): JSX.Element {
         height="180"
         style={{ border: 0 }}
         loading="lazy"
+        allowFullScreen
       />
     );
   };

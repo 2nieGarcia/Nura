@@ -91,7 +91,10 @@ export async function createSession(language?: string): Promise<SessionCreateRes
   return session;
 }
 
-export async function ensureSessionId(currentSessionId?: string | null): Promise<string> {
+export async function ensureSessionId(
+  currentSessionId?: string | null,
+  language = "fil"
+): Promise<string> {
   if (USE_MOCK_API) {
     const sessionId = currentSessionId ?? getStoredSessionId() ?? fallbackSessionId();
     setStoredSessionId(sessionId);
@@ -101,7 +104,7 @@ export async function ensureSessionId(currentSessionId?: string | null): Promise
   const sessionId = currentSessionId ?? getStoredSessionId();
   if (sessionId) return sessionId;
 
-  const session = await createSession("fil-PH");
+  const session = await createSession(language);
   return session.session_id;
 }
 
@@ -128,6 +131,14 @@ function isFacilitySource(value: unknown): value is FacilitySource {
     value === "GOOGLE_MAPS" ||
     value === "PHILCARE_2024"
   );
+}
+
+function toOptionalNumber(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value !== "string") return undefined;
+
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function toFacility(raw: unknown, index: number): Facility | null {
@@ -158,6 +169,8 @@ function toFacility(raw: unknown, index: number): Facility | null {
       typeof value.what_to_bring === "string" ? value.what_to_bring : undefined,
     hours: typeof value.hours === "string" ? value.hours : undefined,
     maps_url: typeof value.maps_url === "string" ? value.maps_url : undefined,
+    latitude: toOptionalNumber(value.latitude ?? value.lat),
+    longitude: toOptionalNumber(value.longitude ?? value.lng),
     data_source: isFacilitySource(value.data_source) ? value.data_source : "LGU",
     data_year: typeof value.data_year === "number" ? value.data_year : undefined,
     data_reliability:
@@ -250,7 +263,8 @@ export async function sendChatMessage(payload: ChatRequest): Promise<ChatRespons
         is4ps: payload.benefits?.includes("4Ps") ?? false,
         hasPhilcare: payload.benefits?.includes("PhilCare HMO") ?? false,
         noBenefits: payload.benefits?.includes("No Declared Benefits") ?? true,
-      }
+      },
+      payload.language
     );
   }
 
@@ -261,6 +275,7 @@ type SubmitChatTurnInput = {
   message: string;
   location?: string;
   benefits?: BenefitProfile;
+  language?: string;
   intent?: "HOSPITAL" | "RAG";
 };
 
@@ -268,17 +283,18 @@ export async function submitChatTurn(
   sessionId: string | null,
   input: SubmitChatTurnInput
 ): Promise<ChatResponse> {
+  const language = input.language ?? "fil";
   const request = async (activeSessionId: string): Promise<ChatResponse> =>
     sendChatMessage({
       session_id: activeSessionId,
       message: input.message,
-      language: "fil-PH",
+      language,
       location_city: input.location,
       benefits: input.benefits ? benefitsToLabels(input.benefits) : undefined,
       intent: input.intent,
     });
 
-  const activeSessionId = await ensureSessionId(sessionId);
+  const activeSessionId = await ensureSessionId(sessionId, language);
 
   try {
     const response = await request(activeSessionId);
@@ -287,7 +303,7 @@ export async function submitChatTurn(
   } catch (error) {
     if (error instanceof ApiError && (error.status === 404 || error.status === 410)) {
       clearStoredSessionId();
-      const replacement = await createSession("fil-PH");
+      const replacement = await createSession(language);
       const response = await request(replacement.session_id);
       setStoredSessionId(response.session_id);
       return response;
@@ -301,12 +317,14 @@ export async function submitNavigation(
   sessionId: string | null,
   concern: string,
   location: string,
-  benefits: BenefitProfile
+  benefits: BenefitProfile,
+  language = "fil"
 ): Promise<ChatResponse> {
   return submitChatTurn(sessionId, {
     message: concern,
     location,
     benefits,
+    language,
     intent: "HOSPITAL",
   });
 }

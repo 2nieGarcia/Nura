@@ -6,13 +6,21 @@ from services.interfaces import AIRagService
 class MockAIRagService(AIRagService):
     def answer(self, session: SessionState, message: str) -> ServiceResult:
         benefits_label = ", ".join(session.benefits) if session.benefits else "your selected benefits"
+        if session.language == "en":
+            reply = (
+                "This is a mocked RAG response. "
+                f"Based on {benefits_label}, you can ask about covered services and claim flow."
+            )
+        else:
+            reply = (
+                "Mocked RAG response ito. "
+                f"Base sa {benefits_label}, pwede kang magtanong tungkol sa covered services "
+                "at claim flow."
+            )
 
         return ServiceResult(
             response_type="RAG_ANSWER",
-            message=(
-                "This is a mocked RAG response. "
-                f"Based on {benefits_label}, you can ask about covered services and claim flow."
-            ),
+            message=reply,
             data={
                 "answer": (
                     "Mock answer: PhilHealth commonly covers consultations, selected diagnostics, "

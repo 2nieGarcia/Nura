@@ -7,9 +7,19 @@ import {
 } from "../constants/app";
 import type { BenefitProfile } from "../types/benefits";
 import type { Facility } from "../types/facility";
+import type { LanguageCode } from "../types/language";
 import { createSession, ensureSessionId, submitChatTurn } from "./api";
 import type { ChatResponse } from "../types/chat";
-import { cacheResults } from "./storage";
+import { getFacilityCoordinates } from "./maps";
+import {
+  cacheResults,
+  clearCarePass,
+  getCarePass,
+  getStoredLanguage,
+  saveCarePass,
+  saveStoredLanguage,
+  type CarePass,
+} from "./storage";
 
 export type ChatStep =
   | "asking_concern"
@@ -59,6 +69,12 @@ export type ChatMessage =
       reply: string;
       error: string | null;
       timestamp: number;
+    }
+  | {
+      id: string;
+      type: "care-pass";
+      pass: CarePass;
+      timestamp: number;
     };
 
 export type NuraChatState = {
@@ -73,14 +89,20 @@ export type NuraChatState = {
   error: string | null;
   isLoading: boolean;
   isEmergency: boolean;
+  language: LanguageCode;
+  carePass: CarePass | null;
 };
 
 export type NuraChatActions = {
   setInput: (value: string) => void;
+  setLanguage: (value: LanguageCode) => void;
   sendInput: () => void;
   chooseQuickReply: (value: string) => void;
   toggleBenefit: (key: keyof BenefitProfile) => void;
   submitBenefits: () => Promise<void>;
+  openCarePass: () => void;
+  closeCarePass: () => void;
+  clearSavedCarePass: () => void;
   dismissEmergency: () => void;
   reset: () => void;
 };
@@ -171,6 +193,15 @@ function resultsMessage(params: {
   };
 }
 
+function carePassMessage(pass: CarePass): ChatMessage {
+  return {
+    id: createId("care-pass"),
+    type: "care-pass",
+    pass,
+    timestamp: now(),
+  };
+}
+
 function createInitialState(): NuraChatState {
   return {
     step: "asking_concern",
@@ -188,6 +219,8 @@ function createInitialState(): NuraChatState {
     error: null,
     isLoading: false,
     isEmergency: false,
+    language: getStoredLanguage(),
+    carePass: getCarePass(),
   };
 }
 
@@ -203,6 +236,51 @@ function summarizeBenefits(benefits: BenefitProfile): string {
   ).map((option) => option.label);
 
   return selected.length > 0 ? selected.join(", ") : "Wala / hindi sure";
+}
+
+function buildCarePass(params: {
+  concern: string;
+  location: string;
+  benefits: BenefitProfile;
+  facilities: Facility[];
+  reply: string;
+}): CarePass | null {
+  const primary = params.facilities[0];
+  if (!primary) return null;
+
+  const coords = getFacilityCoordinates(primary);
+
+  return {
+    concern: params.concern,
+    location: params.location,
+    benefitsSummary: summarizeBenefits(params.benefits),
+    facilityName: primary.name,
+    facilityAddress: primary.address,
+    whatToBring: primary.what_to_bring ?? null,
+    whatToSay: primary.what_to_say ?? null,
+    benefitToClaim: primary.benefit_to_claim ?? null,
+    mapsUrl: primary.maps_url ?? null,
+    lat: coords?.lat ?? null,
+    lng: coords?.lng ?? null,
+    explanation: params.reply,
+    savedAt: Date.now(),
+    dataSource: primary.data_source,
+  };
+}
+
+function saveLatestCarePass(params: {
+  concern: string;
+  location: string;
+  benefits: BenefitProfile;
+  facilities: Facility[];
+  reply: string;
+}): CarePass | null {
+  const pass = buildCarePass(params);
+  if (pass) {
+    saveCarePass(pass);
+  }
+
+  return pass;
 }
 
 function wait(ms: number): Promise<void> {
@@ -255,7 +333,7 @@ export function useNuraChat(): [NuraChatState, NuraChatActions] {
   useEffect(() => {
     let isCancelled = false;
 
-    void ensureSessionId()
+    void ensureSessionId(undefined, stateRef.current.language)
       .then((sessionId) => {
         if (!isCancelled) {
           apiSessionIdRef.current = sessionId;
@@ -307,9 +385,15 @@ export function useNuraChat(): [NuraChatState, NuraChatActions] {
     setState((current) => ({ ...current, currentInput: value }));
   }, []);
 
+  const setLanguage = useCallback((value: LanguageCode) => {
+    saveStoredLanguage(value);
+    setState((current) => ({ ...current, language: value }));
+  }, []);
+
   const submitConcernValue = useCallback(async (value: string) => {
     const concern = value.trim();
     if (!concern) return;
+    const language = stateRef.current.language;
 
     const typingMessage = typing("Sine-check ko muna ang details mo sa backend...");
     const typingId = typingMessage.id;
@@ -331,11 +415,12 @@ export function useNuraChat(): [NuraChatState, NuraChatActions] {
 
     try {
       // New concern starts a fresh backend session to avoid stale context.
-      const freshSession = await createSession("fil-PH");
+      const freshSession = await createSession(language);
       apiSessionIdRef.current = freshSession.session_id;
 
       const response = await submitChatTurn(freshSession.session_id, {
         message: concern,
+        language,
         intent: "HOSPITAL",
       });
 
@@ -377,6 +462,14 @@ export function useNuraChat(): [NuraChatState, NuraChatActions] {
       }
 
       const resolvedLocation = inferredLocation || "lugar mo";
+      const responseBenefits = toBenefitProfile(response.session?.benefits);
+      const savedPass = saveLatestCarePass({
+        concern,
+        location: resolvedLocation,
+        benefits: responseBenefits,
+        facilities: response.facilities,
+        reply: response.reply,
+      });
       cacheResults(response.facilities, response.reply);
 
       setState((current) => ({
@@ -387,6 +480,7 @@ export function useNuraChat(): [NuraChatState, NuraChatActions] {
         reply: response.reply,
         error: null,
         isLoading: false,
+        carePass: savedPass ?? current.carePass,
         messages: [
           ...current.messages.filter((message) => message.id !== typingId),
           botText(response.reply),
@@ -434,6 +528,7 @@ export function useNuraChat(): [NuraChatState, NuraChatActions] {
   const submitLocationValue = useCallback(async (value: string) => {
     const location = value.trim();
     if (!location) return;
+    const language = stateRef.current.language;
 
     const typingMessage = typing(`Ino-update ang location mo: ${location}...`);
     const typingId = typingMessage.id;
@@ -452,6 +547,7 @@ export function useNuraChat(): [NuraChatState, NuraChatActions] {
       const response = await submitChatTurn(apiSessionIdRef.current, {
         message: location,
         location,
+        language,
         intent: "HOSPITAL",
       });
 
@@ -501,6 +597,14 @@ export function useNuraChat(): [NuraChatState, NuraChatActions] {
         return;
       }
 
+      const responseBenefits = toBenefitProfile(response.session?.benefits);
+      const savedPass = saveLatestCarePass({
+        concern: stateRef.current.concern || "iyong concern",
+        location: resolvedLocation,
+        benefits: responseBenefits,
+        facilities: response.facilities,
+        reply: response.reply,
+      });
       cacheResults(response.facilities, response.reply);
       setState((current) => ({
         ...current,
@@ -510,6 +614,7 @@ export function useNuraChat(): [NuraChatState, NuraChatActions] {
         reply: response.reply,
         error: null,
         isLoading: false,
+        carePass: savedPass ?? current.carePass,
         messages: [
           ...current.messages.filter((message) => message.id !== typingId),
           botText(response.reply),
@@ -672,6 +777,7 @@ export function useNuraChat(): [NuraChatState, NuraChatActions] {
     const selectedBenefits = { ...snapshot.benefits };
     const concern = snapshot.concern;
     const location = snapshot.location;
+    const language = snapshot.language;
     const benefitSummary = summarizeBenefits(selectedBenefits);
     const typingMessage = typing(
       `Hinahanap ang mga pasilidad para sa ${concern} sa ${location}...`
@@ -692,6 +798,7 @@ export function useNuraChat(): [NuraChatState, NuraChatActions] {
         message: concern,
         location,
         benefits: selectedBenefits,
+        language,
         intent: "HOSPITAL",
       });
 
@@ -729,6 +836,14 @@ export function useNuraChat(): [NuraChatState, NuraChatActions] {
         return;
       }
 
+      const resolvedLocation = response.session?.location_city?.trim() || location;
+      const savedPass = saveLatestCarePass({
+        concern,
+        location: resolvedLocation,
+        benefits: selectedBenefits,
+        facilities: response.facilities,
+        reply: response.reply,
+      });
       cacheResults(response.facilities, response.reply);
 
       setState((current) => ({
@@ -739,12 +854,13 @@ export function useNuraChat(): [NuraChatState, NuraChatActions] {
         error: null,
         isLoading: false,
         isEmergency: false,
+        carePass: savedPass ?? current.carePass,
         messages: [
           ...current.messages.filter((message) => message.id !== typingId),
           botText(response.reply),
           resultsMessage({
             concern,
-            location: response.session?.location_city?.trim() || location,
+            location: resolvedLocation,
             facilities: response.facilities,
             reply: response.reply,
             error: null,
@@ -771,6 +887,44 @@ export function useNuraChat(): [NuraChatState, NuraChatActions] {
     }
   }, []);
 
+  const openCarePass = useCallback(() => {
+    const pass = getCarePass();
+
+    if (!pass) {
+      setState((current) => ({
+        ...current,
+        carePass: null,
+        messages: current.messages.filter((message) => message.type !== "care-pass"),
+      }));
+      return;
+    }
+
+    setState((current) => ({
+      ...current,
+      carePass: pass,
+      messages: [
+        ...current.messages.filter((message) => message.type !== "care-pass"),
+        carePassMessage(pass),
+      ],
+    }));
+  }, []);
+
+  const closeCarePass = useCallback(() => {
+    setState((current) => ({
+      ...current,
+      messages: current.messages.filter((message) => message.type !== "care-pass"),
+    }));
+  }, []);
+
+  const clearSavedCarePass = useCallback(() => {
+    clearCarePass();
+    setState((current) => ({
+      ...current,
+      carePass: null,
+      messages: current.messages.filter((message) => message.type !== "care-pass"),
+    }));
+  }, []);
+
   const dismissEmergency = useCallback(() => {
     setState((current) => ({
       ...current,
@@ -791,10 +945,14 @@ export function useNuraChat(): [NuraChatState, NuraChatActions] {
 
   const actions: NuraChatActions = {
     setInput,
+    setLanguage,
     sendInput,
     chooseQuickReply,
     toggleBenefit,
     submitBenefits,
+    openCarePass,
+    closeCarePass,
+    clearSavedCarePass,
     dismissEmergency,
     reset,
   };

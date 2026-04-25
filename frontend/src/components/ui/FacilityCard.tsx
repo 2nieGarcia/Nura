@@ -1,4 +1,5 @@
 import type { Facility } from "../../types/facility";
+import { getDirectionsUrl, getFacilityCoordinates } from "../../lib/maps";
 import { MapPreview } from "./MapPreview";
 
 /**
@@ -52,6 +53,8 @@ export function PrimaryRecommendation({
   facility: Facility;
   concern: string;
 }): JSX.Element {
+  const coords = getFacilityCoordinates(facility);
+  const directionsUrl = getDirectionsUrl(coords, facility.maps_url);
   const distance = typeof facility.distance_km === "number"
     ? `${facility.distance_km.toFixed(1)} km`
     : null;
@@ -80,12 +83,16 @@ export function PrimaryRecommendation({
         )}
 
         {/* Live map preview with facility pin */}
-        {facility.latitude && facility.longitude && (
+        {coords ? (
           <MapPreview
-            lat={facility.latitude}
-            lng={facility.longitude}
+            lat={coords.lat}
+            lng={coords.lng}
             name={facility.name}
           />
+        ) : (
+          <div className="mt-4 flex h-[120px] items-center justify-center rounded-form border border-dashed border-paper-edge bg-paper px-4 text-center text-meta text-ink-mute">
+            Walang available na mapa para sa pasilidad na ito.
+          </div>
         )}
 
         {/* One-sentence reason this is the answer. Concern echoed back so the
@@ -131,14 +138,14 @@ export function PrimaryRecommendation({
 
         {/* Stacked CTAs. Maps is primary — it's literally the next action. */}
         <div className="mt-6 flex flex-col gap-2">
-          {facility.maps_url && (
+          {directionsUrl && (
             <a
-              href={facility.maps_url}
+              href={directionsUrl}
               target="_blank"
               rel="noreferrer"
               className="inline-flex min-h-[52px] w-full items-center justify-center rounded-form bg-seal px-5 text-body-lg font-semibold text-card transition-colors hover:bg-seal-press active:bg-seal-press"
             >
-              🧭 Directions — Maps&nbsp;↗
+              Directions - Google Maps
             </a>
           )}
           <button
@@ -161,6 +168,7 @@ export function PrimaryRecommendation({
 
 // ── Alternate row (Zone 3) ────────────────────────────────────────────────
 export function AlternateRow({ facility }: { facility: Facility }): JSX.Element {
+  const directionsUrl = getDirectionsUrl(getFacilityCoordinates(facility), facility.maps_url);
   const distance = typeof facility.distance_km === "number"
     ? `${facility.distance_km.toFixed(1)} km`
     : "";
@@ -175,9 +183,9 @@ export function AlternateRow({ facility }: { facility: Facility }): JSX.Element 
         {distance && (
           <span className="font-mono text-meta text-ink-soft">{distance}</span>
         )}
-        {facility.maps_url && (
+        {directionsUrl && (
           <a
-            href={facility.maps_url}
+            href={directionsUrl}
             target="_blank"
             rel="noreferrer"
             className="text-body font-semibold text-seal underline underline-offset-4 hover:text-seal-press"

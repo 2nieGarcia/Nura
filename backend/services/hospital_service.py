@@ -7,6 +7,13 @@ class MockHospitalService(HospitalService):
     def recommend(self, session: SessionState, message: str) -> ServiceResult:
         city = session.location_city or "your city"
         benefits_label = ", ".join(session.benefits) if session.benefits else "your benefits"
+        if session.language == "en":
+            reply = f"Here are mocked accredited hospitals in {city} based on {benefits_label}."
+        else:
+            reply = (
+                f"Nahanap ko ang mocked accredited facilities sa {city} "
+                f"base sa {benefits_label}."
+            )
 
         # TODO [DATA TEAM]: Replace these placeholder records with the real
         # hospital/facility recommender output once the cleaned dataset lands.
@@ -49,7 +56,7 @@ class MockHospitalService(HospitalService):
 
         return ServiceResult(
             response_type="RECOMMENDATION",
-            message=f"Here are mocked accredited hospitals in {city} based on {benefits_label}.",
+            message=reply,
             data={
                 "facilities": facilities,
                 "hospitals": facilities,

@@ -22,7 +22,13 @@ export default function App(): JSX.Element {
   }
 
   return (
-    <AppShell showHeader={true}>
+    <AppShell
+      showHeader={true}
+      language={state.language}
+      onLanguageChange={actions.setLanguage}
+      hasCarePass={state.carePass !== null}
+      onOpenCarePass={actions.openCarePass}
+    >
       <OfflineBanner isOnline={isOnline} />
 
       <ChatThread messages={state.messages}>

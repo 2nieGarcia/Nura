@@ -1,6 +1,12 @@
 import type { Facility } from "../types/facility";
 import type { ChatResponse } from "../types/chat";
 import type { BenefitProfile } from "../types/benefits";
+import {
+  DEFAULT_LANGUAGE,
+  getLanguageLabel,
+  isLanguageCode,
+  type LanguageCode,
+} from "../types/language";
 
 // ─── Mock facility database ─────────────────────────────────
 
@@ -170,7 +176,16 @@ const MOCK_FACILITIES: Record<string, Facility[]> = {
 
 // ─── Build mock response ────────────────────────────────────
 
-function buildReply(concern: string, location: string, benefits: BenefitProfile): string {
+function normalizeLanguage(value?: string): LanguageCode {
+  return value && isLanguageCode(value) ? value : DEFAULT_LANGUAGE;
+}
+
+function buildReply(
+  concern: string,
+  location: string,
+  benefits: BenefitProfile,
+  language?: string
+): string {
   const hasBenefit = benefits.hasPhilHealth || benefits.hasYakap || benefits.isSenior ||
     benefits.isPwd || benefits.is4ps || benefits.hasPhilcare;
 
@@ -178,7 +193,9 @@ function buildReply(concern: string, location: string, benefits: BenefitProfile)
     ? "Base sa mga benefit mo, narito ang mga pasilidad na pwede mong puntahan."
     : "Kahit walang specific benefit, may mga libreng serbisyo sa mga health center sa lugar mo.";
 
-  return `Hindi ako doktor at hindi ito diagnosis, pero base sa sinabi mong "${concern}" at location mo sa ${location} — ${benefitNote} Tingnan ang mga recommended facilities sa baba.`;
+  const languageLabel = getLanguageLabel(normalizeLanguage(language));
+
+  return `Hindi ako doktor at hindi ito diagnosis, pero base sa sinabi mong "${concern}" at location mo sa ${location} - ${benefitNote} Tingnan ang mga recommended facilities sa baba. Language mode: ${languageLabel}.`;
 }
 
 function matchFacilities(location: string, _benefits: BenefitProfile): Facility[] {
@@ -200,13 +217,14 @@ export async function mockSendChat(
   sessionId: string,
   concern: string,
   location: string,
-  benefits: BenefitProfile
+  benefits: BenefitProfile,
+  language?: string
 ): Promise<ChatResponse> {
   // Simulate network delay for realistic demo feel
   await new Promise((resolve) => setTimeout(resolve, 1500));
 
   const facilities = matchFacilities(location, benefits);
-  const reply = buildReply(concern, location, benefits);
+  const reply = buildReply(concern, location, benefits, language);
 
   return {
     session_id: sessionId,

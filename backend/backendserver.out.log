@@ -1,0 +1,10 @@
+INFO:     127.0.0.1:50468 - "POST /api/v1/session HTTP/1.1" 201 Created
+INFO:     127.0.0.1:50468 - "POST /api/v1/chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64083 - "POST /api/v1/session HTTP/1.1" 201 Created
+INFO:     127.0.0.1:64083 - "POST /api/v1/chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58748 - "OPTIONS /api/v1/session HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:56348 - "OPTIONS /api/v1/session HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:51627 - "OPTIONS /api/v1/session HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:50819 - "GET / HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50819 - "GET /favicon.ico HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50819 - "GET / HTTP/1.1" 404 Not Found
