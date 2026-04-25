@@ -19,10 +19,10 @@ export default function App(): JSX.Element {
     return <EmergencyScreen onDismiss={actions.dismissEmergency} />;
   }
 
-  // Welcome is full-screen with no header
+  // Welcome keeps the letterhead header — first impression must establish trust.
   if (state.screen === "welcome") {
     return (
-      <AppShell showHeader={false}>
+      <AppShell showHeader={true}>
         <OfflineBanner isOnline={isOnline} />
         <WelcomeScreen onStart={actions.start} />
       </AppShell>

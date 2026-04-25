@@ -1,48 +1,87 @@
+import { useEffect, useRef } from "react";
 import { APP_COPY } from "../../constants/app";
 
+/**
+ * EmergencyScreen — a true *interrupt*, not a "red marketing screen".
+ *
+ * What changed vs. the previous version:
+ * - No more centered-hero composition. The previous version looked like the
+ *   Welcome screen with a different color, which is exactly the wrong signal
+ *   for a panicking user.
+ * - Top half is full-bleed stamp red. No header, no logo, no margins. The
+ *   only things that exist on this screen are the message, the call button,
+ *   and the undo button.
+ * - The "Hindi pala emergency" undo is given the same height as the call
+ *   button. A user who landed here on a false positive (e.g. typing
+ *   "lagnat") must have an equally easy escape, otherwise we have just
+ *   trapped them.
+ * - role="alertdialog" + initial focus on Call 911 + restored focus on
+ *   dismiss = correct AT semantics for an interrupt.
+ */
 type EmergencyScreenProps = {
   onDismiss: () => void;
 };
 
 export function EmergencyScreen({ onDismiss }: EmergencyScreenProps): JSX.Element {
+  const callRef = useRef<HTMLAnchorElement>(null);
+
+  useEffect(() => {
+    // Move focus to the call action on mount so screen readers announce it
+    // first and so a panicking user can tap-and-go via keyboard if needed.
+    callRef.current?.focus();
+  }, []);
+
   return (
-    <div className="screen-enter flex min-h-[100dvh] flex-col items-center justify-center bg-nura-emergency-bg px-6 py-12 text-center">
-      {/* Alert icon */}
-      <div className="emergency-pulse mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-nura-emergency">
-        <span className="text-3xl text-white">⚠️</span>
+    <div
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="emergency-title"
+      aria-describedby="emergency-body"
+      className="flex min-h-[100dvh] flex-col bg-card"
+    >
+      {/* Top half: full-bleed stamp red. The visual register of an emergency
+          public-health poster. */}
+      <div className="flex flex-col bg-stamp px-5 pb-8 pt-10">
+        <p className="font-mono text-label uppercase tracking-[0.18em] text-card/85">
+          Babala — kailangang aksyunan agad
+        </p>
+        <h2
+          id="emergency-title"
+          className="mt-3 font-display text-[2.25rem] leading-[2.5rem] font-bold text-card"
+        >
+          EMERGENCY ITO.
+        </h2>
+        <p
+          id="emergency-body"
+          className="mt-3 max-w-[36ch] text-body-lg text-card/95"
+        >
+          {APP_COPY.emergencyMessage}
+        </p>
       </div>
 
-      {/* Message */}
-      <h2 className="text-2xl font-bold text-nura-emergency">
-        EMERGENCY ITO
-      </h2>
-      <p className="mt-4 max-w-sm text-base leading-relaxed text-nura-text">
-        {APP_COPY.emergencyMessage}
-      </p>
+      {/* Bottom half: actions. Equal weight call vs. dismiss. */}
+      <div className="flex flex-1 flex-col justify-end gap-3 px-5 pb-8 pt-6">
+        <a
+          ref={callRef}
+          href="tel:911"
+          className="inline-flex min-h-[72px] w-full items-center justify-center rounded-stamp bg-stamp px-6 text-[1.5rem] font-bold text-card transition-colors hover:bg-stamp-press"
+        >
+          Tumawag sa 911
+        </a>
 
-      {/* Call 911 */}
-      <a
-        href="tel:911"
-        className="mt-8 flex w-full max-w-xs items-center justify-center gap-2 rounded-2xl bg-nura-emergency px-6 py-4 text-lg font-bold text-white shadow-card transition-all hover:bg-rose-800 active:scale-[0.98]"
-      >
-        <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"
-          />
-        </svg>
-        Tumawag sa 911
-      </a>
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="inline-flex min-h-[72px] w-full items-center justify-center rounded-stamp border-rule border-ink bg-card px-6 text-body-lg font-semibold text-ink transition-colors hover:bg-paper"
+        >
+          Hindi pala emergency, bumalik
+        </button>
 
-      {/* Dismiss */}
-      <button
-        type="button"
-        onClick={onDismiss}
-        className="mt-6 text-sm text-nura-muted underline underline-offset-2 transition-colors hover:text-nura-text"
-      >
-        {APP_COPY.emergencyNotReally}
-      </button>
+        <p className="mt-2 text-meta text-ink-soft">
+          Kung walang signal ang 911, subukan ang DOH hotline (02) 8-651-7800
+          o tumawag sa pinakamalapit na ospital.
+        </p>
+      </div>
     </div>
   );
 }

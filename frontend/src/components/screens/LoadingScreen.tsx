@@ -1,33 +1,44 @@
-import { APP_COPY } from "../../constants/app";
-
+/**
+ * LoadingScreen — narrate, don't decorate.
+ *
+ * Was: 3 pulsing dots + two skeleton cards. That's "Generic Loading State
+ * #47" — it teaches the user nothing about why the wait is worth it.
+ *
+ * Now: one sentence that names what's happening, plus a 3px indeterminate
+ * progress bar. The wait becomes evidence of work, not filler.
+ *
+ * Note: the actual concern/location aren't passed in here (state hook
+ * doesn't expose them to this component) so the message is intentionally
+ * generic-but-specific. If desired, a future refactor can thread them
+ * through to substitute "sa Quezon City" inline.
+ */
 export function LoadingScreen(): JSX.Element {
   return (
-    <div className="screen-enter flex flex-1 flex-col items-center justify-center px-6 py-12">
-      {/* Pulsing indicator */}
-      <div className="flex items-center gap-3">
-        <div className="skeleton-pulse h-3 w-3 rounded-full bg-nura-primary" style={{ animationDelay: "0ms" }} />
-        <div className="skeleton-pulse h-3 w-3 rounded-full bg-nura-primary" style={{ animationDelay: "200ms" }} />
-        <div className="skeleton-pulse h-3 w-3 rounded-full bg-nura-primary" style={{ animationDelay: "400ms" }} />
-      </div>
-
-      <p className="mt-6 text-sm font-medium text-nura-text-light">
-        {APP_COPY.loadingText}
+    <section
+      className="paper-in flex flex-1 flex-col px-5 pb-6 pt-10"
+      aria-live="polite"
+      aria-busy="true"
+    >
+      <p className="font-mono text-label uppercase text-seal">
+        Hinahanap...
+      </p>
+      <h2 className="mt-2 font-display text-[1.5rem] leading-snug text-ink">
+        Tinitingnan ang mga health center na tumatanggap ng iyong benefit.
+      </h2>
+      <p className="mt-3 text-body text-ink-soft">
+        Sinasala ang PhilHealth, YAKAP, Malasakit Center, at LGU primary care
+        sa lugar mo. Ipapakita ko muna ang isa — yung pinakamalapit at
+        pinaka-tapat sa concern mo.
       </p>
 
-      {/* Skeleton preview */}
-      <div className="mt-8 w-full max-w-sm space-y-4">
-        <div className="rounded-2xl bg-white p-5 shadow-soft">
-          <div className="skeleton-pulse h-4 w-3/4 rounded bg-nura-border" />
-          <div className="skeleton-pulse mt-3 h-3 w-full rounded bg-nura-border-light" />
-          <div className="skeleton-pulse mt-2 h-3 w-5/6 rounded bg-nura-border-light" />
-          <div className="skeleton-pulse mt-4 h-16 w-full rounded-xl bg-nura-border-light" />
-        </div>
-        <div className="rounded-2xl bg-white p-5 shadow-soft">
-          <div className="skeleton-pulse h-4 w-2/3 rounded bg-nura-border" />
-          <div className="skeleton-pulse mt-3 h-3 w-full rounded bg-nura-border-light" />
-          <div className="skeleton-pulse mt-2 h-3 w-4/5 rounded bg-nura-border-light" />
-        </div>
+      <div className="mt-8" aria-hidden="true">
+        <div className="progress-rail" />
       </div>
-    </div>
+
+      {/* Honest expectation-setting. */}
+      <p className="mt-6 text-meta text-ink-mute">
+        Karaniwang 1–2 segundo lang ito.
+      </p>
+    </section>
   );
 }

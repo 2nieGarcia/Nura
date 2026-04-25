@@ -1,4 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Nura icon">
-  <rect width="128" height="128" rx="24" fill="#1b6b3a"/>
-  <path d="M28 94V34h14l22 34 22-34h14v60H86V58L64 90 42 58v36z" fill="#ffffff"/>
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Nura">
+  <rect width="64" height="64" rx="12" fill="#0E2A3F"/>
+  <path d="M18 18 v28 a4 4 0 0 0 8 0 V31 l12 13 a4 4 0 0 0 8 0 V18 a4 4 0 0 0 -8 0 v15 L26 18 a4 4 0 0 0 -8 0 z" fill="#F1F4F6"/>
+  <circle cx="42" cy="24" r="4" fill="#2BA9A7"/>
+  <path d="M38 26 L42 34 L46 26 Z" fill="#2BA9A7"/>
 </svg>
