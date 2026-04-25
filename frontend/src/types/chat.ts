@@ -1,15 +1,14 @@
 import type { BenefitProfile } from "./benefits";
 import type { Facility } from "./facility";
 
-export type ChatState =
-  | "idle"
-  | "asking_symptom"
-  | "asking_location"
-  | "asking_benefits"
+export type NuraScreen =
+  | "welcome"
+  | "concern"
+  | "location"
+  | "benefits"
   | "loading"
   | "results"
-  | "emergency"
-  | "error";
+  | "emergency";
 
 export type ChatMessage = {
   id: string;
@@ -27,8 +26,11 @@ export type ChatRequest = {
 
 export type ChatResponse = {
   session_id: string;
-  state: ChatState;
+  state: NuraScreen;
   reply: string;
   facilities: Facility[];
   is_emergency: boolean;
 };
+
+/** Kept for backward compatibility */
+export type ChatState = NuraScreen;
