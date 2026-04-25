@@ -1,0 +1,19 @@
+{
+  "name": "Nura",
+  "short_name": "Nura",
+  "description": "Filipino healthcare access navigator for practical care routing and benefits guidance.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f8faf7",
+  "theme_color": "#1b6b3a",
+  "lang": "fil-PH",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
