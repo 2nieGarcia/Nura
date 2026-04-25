@@ -26,6 +26,14 @@ export type ChatRequest = {
   intent?: "HOSPITAL" | "RAG";
 };
 
+export type BackendSessionSnapshot = {
+  id: string;
+  language?: string | null;
+  location_city?: string | null;
+  benefits?: string[];
+  expires_at?: string | null;
+};
+
 export type ChatResponse = {
   session_id: string;
   state: NuraScreen;
@@ -34,6 +42,7 @@ export type ChatResponse = {
   is_emergency: boolean;
   response_type?: "EMERGENCY" | "FOLLOW_UP" | "RECOMMENDATION" | "RAG_ANSWER";
   missing_fields?: string[];
+  session?: BackendSessionSnapshot;
 };
 
 export type SessionCreateResponse = {

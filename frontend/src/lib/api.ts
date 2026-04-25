@@ -1,5 +1,6 @@
 import type { BenefitProfile } from "../types/benefits";
 import type {
+  BackendSessionSnapshot,
   BackendChatResponse,
   ChatRequest,
   ChatResponse,
@@ -184,15 +185,40 @@ function getBackendFacilities(data: Record<string, unknown>): Facility[] {
     .filter((facility): facility is Facility => facility !== null);
 }
 
+function getBackendSession(data: Record<string, unknown>): BackendSessionSnapshot | undefined {
+  const raw = data.session;
+  if (typeof raw !== "object" || raw === null) return undefined;
+
+  const value = raw as Record<string, unknown>;
+  if (typeof value.id !== "string") return undefined;
+
+  return {
+    id: value.id,
+    language: typeof value.language === "string" ? value.language : null,
+    location_city:
+      typeof value.location_city === "string" ? value.location_city : null,
+    benefits: Array.isArray(value.benefits)
+      ? value.benefits.filter((benefit): benefit is string => typeof benefit === "string")
+      : [],
+    expires_at: typeof value.expires_at === "string" ? value.expires_at : null,
+  };
+}
+
 function normalizeBackendResponse(response: BackendChatResponse): ChatResponse {
   return {
     session_id: response.session_id,
-    state: response.response_type === "EMERGENCY" ? "emergency" : "results",
+    state:
+      response.response_type === "EMERGENCY"
+        ? "emergency"
+        : response.response_type === "FOLLOW_UP"
+          ? "concern"
+          : "results",
     reply: response.message,
     facilities: getBackendFacilities(response.data),
     is_emergency: response.response_type === "EMERGENCY",
     response_type: response.response_type,
     missing_fields: response.missing_fields,
+    session: getBackendSession(response.data),
   };
 }
 
@@ -231,20 +257,25 @@ export async function sendChatMessage(payload: ChatRequest): Promise<ChatRespons
   return normalizeBackendResponse(await postChat(payload));
 }
 
-export async function submitNavigation(
+type SubmitChatTurnInput = {
+  message: string;
+  location?: string;
+  benefits?: BenefitProfile;
+  intent?: "HOSPITAL" | "RAG";
+};
+
+export async function submitChatTurn(
   sessionId: string | null,
-  concern: string,
-  location: string,
-  benefits: BenefitProfile
+  input: SubmitChatTurnInput
 ): Promise<ChatResponse> {
   const request = async (activeSessionId: string): Promise<ChatResponse> =>
     sendChatMessage({
       session_id: activeSessionId,
-      message: concern,
+      message: input.message,
       language: "fil-PH",
-      location_city: location,
-      benefits: benefitsToLabels(benefits),
-      intent: "HOSPITAL",
+      location_city: input.location,
+      benefits: input.benefits ? benefitsToLabels(input.benefits) : undefined,
+      intent: input.intent,
     });
 
   const activeSessionId = await ensureSessionId(sessionId);
@@ -257,9 +288,25 @@ export async function submitNavigation(
     if (error instanceof ApiError && (error.status === 404 || error.status === 410)) {
       clearStoredSessionId();
       const replacement = await createSession("fil-PH");
-      return request(replacement.session_id);
+      const response = await request(replacement.session_id);
+      setStoredSessionId(response.session_id);
+      return response;
     }
 
     throw error;
   }
+}
+
+export async function submitNavigation(
+  sessionId: string | null,
+  concern: string,
+  location: string,
+  benefits: BenefitProfile
+): Promise<ChatResponse> {
+  return submitChatTurn(sessionId, {
+    message: concern,
+    location,
+    benefits,
+    intent: "HOSPITAL",
+  });
 }
