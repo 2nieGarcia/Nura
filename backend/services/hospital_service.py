@@ -8,16 +8,42 @@ class MockHospitalService(HospitalService):
         city = session.location_city or "your city"
         benefits_label = ", ".join(session.benefits) if session.benefits else "your benefits"
 
-        hospitals = [
+        # TODO [DATA TEAM]: Replace these placeholder records with the real
+        # hospital/facility recommender output once the cleaned dataset lands.
+        facilities = [
             {
                 "name": f"{city} General Hospital",
-                "city": city,
+                "address": f"{city} public hospital district",
+                "distance_km": 2.4,
                 "accreditation": "PhilHealth Accredited",
+                "benefit_to_claim": f"{benefits_label} - ask the billing or PhilHealth desk to verify coverage.",
+                "what_to_say": f"Pa-check up po para sa {message}. May {benefits_label} po ako.",
+                "what_to_bring": "Valid ID, PhilHealth ID or MDR if available, and any doctor's request or previous records.",
+                "hours": "Call facility to confirm current OPD hours.",
+                "maps_url": f"https://maps.google.com/?q={city.replace(' ', '+')}+General+Hospital",
+                "latitude": 14.6760,
+                "longitude": 121.0437,
+                "data_source": "LGU",
+                "data_year": 2026,
+                "data_reliability": "LOW",
+                "is_emergency_capable": True,
             },
             {
                 "name": f"{city} District Medical Center",
-                "city": city,
+                "address": f"{city} district health facility",
+                "distance_km": 4.8,
                 "accreditation": "PhilHealth Accredited",
+                "benefit_to_claim": f"{benefits_label} - confirm accepted benefits before going.",
+                "what_to_say": f"May {benefits_label} po ako. Saan po pwede magpa-assess para sa concern ko?",
+                "what_to_bring": "Valid ID, benefit card or proof if available, and any relevant medical documents.",
+                "hours": "Call facility to confirm current OPD hours.",
+                "maps_url": f"https://maps.google.com/?q={city.replace(' ', '+')}+District+Medical+Center",
+                "latitude": 14.6500,
+                "longitude": 121.0500,
+                "data_source": "LGU",
+                "data_year": 2026,
+                "data_reliability": "LOW",
+                "is_emergency_capable": False,
             },
         ]
 
@@ -25,9 +51,8 @@ class MockHospitalService(HospitalService):
             response_type="RECOMMENDATION",
             message=f"Here are mocked accredited hospitals in {city} based on {benefits_label}.",
             data={
-                "hospitals": hospitals,
-                # TODO [DATA TEAM]: Replace this with real database/recommender logic.
-                # Recommended insertion point: services/hospital_service.py::recommend
+                "facilities": facilities,
+                "hospitals": facilities,
                 "source": "mock-hospital-service",
             },
         )

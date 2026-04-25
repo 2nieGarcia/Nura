@@ -264,14 +264,54 @@ Placeholders for AI Team:
 
 ---
 
-## Frontend Setup (TBD)
+## Local Frontend + Backend Run
 
-Owner: Frontend Developer
+The current UI is wired to the FastAPI backend at `http://127.0.0.1:8000/api/v1`.
+For local development without Supabase, use the in-memory session fallback.
 
-Placeholders for Frontend Team:
+### Backend
 
-- Framework choice (React/Next.js/etc).
-- Handle the four `response_type` values from the API to show specific UI components (Emergency banners, hospital cards, or chat bubbles).
+```bash
+cd backend
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+set SESSION_BACKEND=memory
+set ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+python -m uvicorn main:app --reload --host 127.0.0.1 --port 8000
+```
+
+Use `SESSION_BACKEND=supabase` with real `SUPABASE_URL` and
+`SUPABASE_SERVICE_ROLE_KEY` when the Supabase session table is ready.
+
+### Frontend
+
+```bash
+cd frontend
+copy .env.example .env
+npm install
+npm run dev -- --host 127.0.0.1 --port 5173
+```
+
+`frontend/.env` should include:
+
+```env
+VITE_API_URL=http://127.0.0.1:8000/api/v1
+VITE_USE_MOCK_API=false
+```
+
+### Integrated Smoke Test
+
+1. Open `http://127.0.0.1:5173/`.
+2. Enter a concern such as `Masakit ulo`.
+3. Enter `Quezon City`.
+4. Select `PhilHealth`.
+5. Submit benefits.
+
+The frontend creates a backend session through `POST /api/v1/session`, then
+sends the completed intake to `POST /api/v1/chat`. The current hospital results
+come from `services/hospital_service.py`, which is still a placeholder until the
+Data Team's real recommender is available.
 
 ---
 

@@ -2,7 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from config import get_settings
-from db.session_repository import SessionRepository
+from db.session_repository import InMemorySessionRepository, SessionRepository
 from db.supabase_client import get_supabase_client
 from services.ai_rag_service import MockAIRagService
 from services.emergency_classifier import KeywordEmergencyClassifier
@@ -12,8 +12,35 @@ from services.orchestrator import ChatOrchestrator
 from services.orchestrator_inference import VertexGeminiInferenceService
 
 
+def _is_placeholder_supabase_config(url: str, key: str) -> bool:
+    return (
+        not url.strip()
+        or not key.strip()
+        or "your-project-id" in url
+        or key == "your-service-role-key"
+    )
+
+
 @lru_cache
-def get_session_repository() -> SessionRepository:
+def get_session_repository() -> SessionRepository | InMemorySessionRepository:
+    settings = get_settings()
+    use_memory = settings.session_backend == "memory" or (
+        settings.session_backend == "auto"
+        and _is_placeholder_supabase_config(
+            settings.supabase_url,
+            settings.supabase_service_role_key,
+        )
+    )
+    if use_memory:
+        return InMemorySessionRepository()
+    if _is_placeholder_supabase_config(
+        settings.supabase_url,
+        settings.supabase_service_role_key,
+    ):
+        raise RuntimeError(
+            "Supabase session backend selected, but SUPABASE_URL or "
+            "SUPABASE_SERVICE_ROLE_KEY is not configured."
+        )
     return SessionRepository(client=get_supabase_client())
 
 
