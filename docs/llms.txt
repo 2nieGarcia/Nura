@@ -1,0 +1,69 @@
+# Nura LLM Context File
+
+Last updated: 2026-04-25
+
+## Project Identity
+Nura is a Filipino healthcare access navigator.
+Nura is NOT a doctor and must never diagnose, prescribe, or imply confirmed conditions.
+
+## Core Safety Rules (Non-Negotiable)
+1. Run deterministic emergency detection before any LLM processing.
+2. If emergency keywords are detected, return emergency guidance immediately.
+3. Keep responses practical: where to go, what benefit to use, what to bring, what to say.
+4. Never claim medical certainty.
+
+## Language Policy
+- Filipino-first and dialect-aware.
+- If dialect is unclear, fallback to simple Filipino.
+- If input is pure English, respond in English.
+
+## Implemented Baseline (Current)
+### Frontend
+- React + Vite + TypeScript + Tailwind shell
+- PWA setup with manifest and Workbox runtime caching
+- Deterministic emergency keyword guard in frontend
+- Chat UI shell with benefit selector, location input, facility card rendering
+- Typed contracts for chat request/response and facility models
+
+### Backend
+- FastAPI app skeleton
+- Typed Pydantic schemas for request/response and facility data
+- Deterministic emergency keyword guard in backend
+- Basic language profile selector (Filipino fallback, English for pure English)
+- Mocked POST /chat endpoint with typed placeholder response
+- Modular service boundaries for future integrations
+
+## Integration Boundaries (Not Yet Implemented)
+- Google Maps Geocoding integration
+- Supabase Postgres + PostGIS nearby facility query
+- Supabase pgvector RAG retrieval for benefit guides
+- Gemini Flash response composition
+- Production data ingestion and verification pipelines
+
+## LLM Working Agreement (Best Practice)
+When making changes, do the following:
+1. Preserve the non-negotiable safety rules above.
+2. Prefer small, typed, reversible commits with clear boundaries.
+3. Keep integration code behind service interfaces.
+4. Update this file when major architecture or behavior changes.
+5. Update `docs/plan.md` status when a TODO is started or completed.
+
+## Memory Protocol For Future Agents
+Use this file as the source of truth for what is already implemented.
+After each meaningful implementation:
+1. Add one bullet under "Implemented Baseline" if behavior changed.
+2. Move completed items from "Integration Boundaries" to implemented sections.
+3. Keep `docs/plan.md` aligned with current priorities and statuses.
+
+## Quick Run Commands
+Frontend:
+- `cd frontend`
+- `npm install`
+- `npm run dev`
+
+Backend:
+- `cd backend`
+- `python -m venv .venv`
+- `.venv\\Scripts\\activate`
+- `pip install -r requirements.txt`
+- `uvicorn app.main:app --reload --port 8000`
