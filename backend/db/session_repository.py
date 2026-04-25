@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from models.session import SessionState
 
@@ -83,3 +83,56 @@ class SessionRepository:
         normalized["benefits"] = normalized.get("benefits") or []
         normalized["conversation_history"] = normalized.get("conversation_history") or []
         return SessionState.model_validate(normalized)
+
+
+class InMemorySessionRepository:
+    """Local development fallback when Supabase credentials are not configured."""
+
+    def __init__(self) -> None:
+        self.sessions: dict[UUID, SessionState] = {}
+
+    def create_session(self, language: str | None, ttl_minutes: int) -> SessionState:
+        now = datetime.now(timezone.utc)
+        session = SessionState(
+            id=uuid4(),
+            language=language,
+            benefits=[],
+            conversation_history=[],
+            created_at=now,
+            updated_at=now,
+            expires_at=now + timedelta(minutes=ttl_minutes),
+        )
+        self.sessions[session.id] = session
+        return session
+
+    def get_session(self, session_id: UUID) -> SessionState | None:
+        return self.sessions.get(session_id)
+
+    def update_session(
+        self,
+        session_id: UUID,
+        fields: dict[str, Any] | None = None,
+        append_messages: list[dict[str, Any]] | None = None,
+        ttl_minutes: int | None = None,
+    ) -> SessionState:
+        current = self.get_session(session_id)
+        if current is None:
+            raise SessionNotFoundError(f"Session {session_id} does not exist.")
+
+        if fields:
+            for key, value in fields.items():
+                setattr(current, key, value)
+
+        if append_messages:
+            current.conversation_history = [
+                *current.conversation_history,
+                *append_messages,
+            ]
+
+        now = datetime.now(timezone.utc)
+        current.updated_at = now
+        if ttl_minutes is not None:
+            current.expires_at = now + timedelta(minutes=ttl_minutes)
+
+        self.sessions[current.id] = current
+        return current

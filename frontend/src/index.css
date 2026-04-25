@@ -1,0 +1,192 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Kalusugan Navigator — base layer
+   - Typography baseline (Plex Sans for UI, Fraunces for headings)
+   - One screen-fade animation, gated on prefers-reduced-motion
+   - Universal visible focus ring (a11y, never `outline: none`)
+   ────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  font-family: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  font-feature-settings: "ss01", "cv02";
+  /* Plex Sans clarity tweaks */
+  line-height: 1.5;
+  font-weight: 400;
+  color: #111815;
+  /* ink */
+  background-color: #F4EFE6;
+  /* paper */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  min-height: 100dvh;
+}
+
+body {
+  overflow-x: hidden;
+}
+
+/* Inherit form controls so Tailwind classes apply uniformly */
+textarea,
+input,
+button,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+/* Headings use Fraunces with optical sizing and tight tracking.
+   The `opsz` axis ensures the serif looks correct at large sizes. */
+h1,
+h2,
+h3 {
+  font-family: "Fraunces", Georgia, serif;
+  font-variation-settings: "opsz" 30;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: #111815;
+}
+
+/* ── Visible focus ring (a11y) ──────────────────────────────────────────── */
+:focus-visible {
+  outline: 3px solid #0F5132;
+  /* seal */
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ── One motion: paper-in, gated by reduced-motion ──────────────────────── */
+.paper-in {
+  animation: paperIn 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes paperIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Indeterminate progress bar used in the Loading screen */
+.progress-rail {
+  position: relative;
+  overflow: hidden;
+  background: #E6DFCF;
+  /* paper-edge */
+  height: 3px;
+  border-radius: 2px;
+}
+
+.progress-rail::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  background: #0F5132;
+  /* seal */
+  animation: progressSlide 1.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes progressSlide {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(280%);
+  }
+}
+
+/* Honour user motion preference — disables ALL non-essential motion */
+@media (prefers-reduced-motion: reduce) {
+  .paper-in {
+    animation: none;
+  }
+
+  .progress-rail::after {
+    animation: none;
+    transform: translateX(0);
+    width: 100%;
+    opacity: 0.6;
+  }
+}
+
+/* Safe-area padding for installed PWA */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* Quiet scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #E6DFCF;
+  border-radius: 2px;
+}
+
+.message-enter {
+  animation: messageSlideIn 250ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes messageSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.typing-dot {
+  animation: typingBounce 1s ease-in-out infinite;
+}
+
+@keyframes typingBounce {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+  }
+
+  30% {
+    transform: translateY(-6px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .message-enter,
+  .typing-dot {
+    animation: none;
+  }
+}

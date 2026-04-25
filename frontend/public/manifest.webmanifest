@@ -1,0 +1,25 @@
+{
+  "name": "Nura",
+  "short_name": "Nura",
+  "description": "Hindi doktor. Gabay sa tamang pasilidad at benepisyo para sa Pilipino.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#F1F4F6",
+  "theme_color": "#0E2A3F",
+  "lang": "fil-PH",
+  "icons": [
+    {
+      "src": "/logo-mark.png",
+      "sizes": "299x288",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/logo.jpg",
+      "sizes": "1080x1080",
+      "type": "image/jpeg",
+      "purpose": "any"
+    }
+  ]
+}
