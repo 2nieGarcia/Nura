@@ -20,8 +20,10 @@ export type ChatMessage = {
 export type ChatRequest = {
   session_id: string;
   message: string;
-  location?: string;
-  benefits?: BenefitProfile;
+  language?: string;
+  location_city?: string;
+  benefits?: string[];
+  intent?: "HOSPITAL" | "RAG";
 };
 
 export type ChatResponse = {
@@ -30,6 +32,21 @@ export type ChatResponse = {
   reply: string;
   facilities: Facility[];
   is_emergency: boolean;
+  response_type?: "EMERGENCY" | "FOLLOW_UP" | "RECOMMENDATION" | "RAG_ANSWER";
+  missing_fields?: string[];
+};
+
+export type SessionCreateResponse = {
+  session_id: string;
+  expires_at: string;
+};
+
+export type BackendChatResponse = {
+  session_id: string;
+  response_type: "EMERGENCY" | "FOLLOW_UP" | "RECOMMENDATION" | "RAG_ANSWER";
+  message: string;
+  data: Record<string, unknown>;
+  missing_fields: string[];
 };
 
 /** Kept for backward compatibility */

@@ -1,4 +1,5 @@
 import type { Facility } from "../../types/facility";
+import { MapPreview } from "./MapPreview";
 
 /**
  * Two facility components living together because they describe one object
@@ -78,6 +79,15 @@ export function PrimaryRecommendation({
           </p>
         )}
 
+        {/* Live map preview with facility pin */}
+        {facility.latitude && facility.longitude && (
+          <MapPreview
+            lat={facility.latitude}
+            lng={facility.longitude}
+            name={facility.name}
+          />
+        )}
+
         {/* One-sentence reason this is the answer. Concern echoed back so the
             user knows the system actually heard them. */}
         {facility.benefit_to_claim && (
@@ -128,7 +138,7 @@ export function PrimaryRecommendation({
               rel="noreferrer"
               className="inline-flex min-h-[52px] w-full items-center justify-center rounded-form bg-seal px-5 text-body-lg font-semibold text-card transition-colors hover:bg-seal-press active:bg-seal-press"
             >
-              Buksan sa Google Maps&nbsp;↗
+              🧭 Directions — Maps&nbsp;↗
             </a>
           )}
           <button

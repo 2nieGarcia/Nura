@@ -151,3 +151,42 @@ h3 {
   background: #E6DFCF;
   border-radius: 2px;
 }
+
+.message-enter {
+  animation: messageSlideIn 250ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes messageSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.typing-dot {
+  animation: typingBounce 1s ease-in-out infinite;
+}
+
+@keyframes typingBounce {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+  }
+
+  30% {
+    transform: translateY(-6px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .message-enter,
+  .typing-dot {
+    animation: none;
+  }
+}
