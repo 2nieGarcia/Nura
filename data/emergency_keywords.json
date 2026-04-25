@@ -1,0 +1,32 @@
+{
+  "global": [
+    "heart attack",
+    "stroke",
+    "seizure",
+    "not breathing",
+    "severe bleeding",
+    "unconscious",
+    "cannot breathe"
+  ],
+  "by_language": {
+    "tagalog": [
+      "atake sa puso",
+      "hindi makahinga",
+      "nahimatay",
+      "dumudugo nang sobra",
+      "matinding sakit sa dibdib"
+    ],
+    "cebuano": [
+      "lisod kaayo og ginhawa",
+      "walay ginhawa",
+      "grabeng pagdugo",
+      "nawad-an ug panimuot"
+    ],
+    "english": [
+      "chest pain",
+      "suicidal",
+      "overdose",
+      "fainted"
+    ]
+  }
+}
