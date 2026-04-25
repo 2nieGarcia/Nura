@@ -7,9 +7,19 @@ import {
 } from "../constants/app";
 import type { BenefitProfile } from "../types/benefits";
 import type { Facility } from "../types/facility";
-import { ensureSessionId, submitNavigation } from "./api";
-import { isEmergencyMessage } from "./emergency";
-import { cacheResults } from "./storage";
+import type { LanguageCode } from "../types/language";
+import { createSession, ensureSessionId, submitChatTurn } from "./api";
+import type { ChatResponse } from "../types/chat";
+import { getFacilityCoordinates } from "./maps";
+import {
+  cacheResults,
+  clearCarePass,
+  getCarePass,
+  getStoredLanguage,
+  saveCarePass,
+  saveStoredLanguage,
+  type CarePass,
+} from "./storage";
 
 export type ChatStep =
   | "asking_concern"
@@ -59,6 +69,12 @@ export type ChatMessage =
       reply: string;
       error: string | null;
       timestamp: number;
+    }
+  | {
+      id: string;
+      type: "care-pass";
+      pass: CarePass;
+      timestamp: number;
     };
 
 export type NuraChatState = {
@@ -73,14 +89,20 @@ export type NuraChatState = {
   error: string | null;
   isLoading: boolean;
   isEmergency: boolean;
+  language: LanguageCode;
+  carePass: CarePass | null;
 };
 
 export type NuraChatActions = {
   setInput: (value: string) => void;
+  setLanguage: (value: LanguageCode) => void;
   sendInput: () => void;
   chooseQuickReply: (value: string) => void;
   toggleBenefit: (key: keyof BenefitProfile) => void;
   submitBenefits: () => Promise<void>;
+  openCarePass: () => void;
+  closeCarePass: () => void;
+  clearSavedCarePass: () => void;
   dismissEmergency: () => void;
   reset: () => void;
 };
@@ -171,6 +193,15 @@ function resultsMessage(params: {
   };
 }
 
+function carePassMessage(pass: CarePass): ChatMessage {
+  return {
+    id: createId("care-pass"),
+    type: "care-pass",
+    pass,
+    timestamp: now(),
+  };
+}
+
 function createInitialState(): NuraChatState {
   return {
     step: "asking_concern",
@@ -188,6 +219,8 @@ function createInitialState(): NuraChatState {
     error: null,
     isLoading: false,
     isEmergency: false,
+    language: getStoredLanguage(),
+    carePass: getCarePass(),
   };
 }
 
@@ -205,10 +238,87 @@ function summarizeBenefits(benefits: BenefitProfile): string {
   return selected.length > 0 ? selected.join(", ") : "Wala / hindi sure";
 }
 
+function buildCarePass(params: {
+  concern: string;
+  location: string;
+  benefits: BenefitProfile;
+  facilities: Facility[];
+  reply: string;
+}): CarePass | null {
+  const primary = params.facilities[0];
+  if (!primary) return null;
+
+  const coords = getFacilityCoordinates(primary);
+
+  return {
+    concern: params.concern,
+    location: params.location,
+    benefitsSummary: summarizeBenefits(params.benefits),
+    facilityName: primary.name,
+    facilityAddress: primary.address,
+    whatToBring: primary.what_to_bring ?? null,
+    whatToSay: primary.what_to_say ?? null,
+    benefitToClaim: primary.benefit_to_claim ?? null,
+    mapsUrl: primary.maps_url ?? null,
+    lat: coords?.lat ?? null,
+    lng: coords?.lng ?? null,
+    explanation: params.reply,
+    savedAt: Date.now(),
+    dataSource: primary.data_source,
+  };
+}
+
+function saveLatestCarePass(params: {
+  concern: string;
+  location: string;
+  benefits: BenefitProfile;
+  facilities: Facility[];
+  reply: string;
+}): CarePass | null {
+  const pass = buildCarePass(params);
+  if (pass) {
+    saveCarePass(pass);
+  }
+
+  return pass;
+}
+
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => {
     window.setTimeout(resolve, ms);
   });
+}
+
+function hasMissingField(response: ChatResponse, field: "location_city" | "benefits"): boolean {
+  return response.missing_fields?.includes(field) ?? false;
+}
+
+function toBenefitProfile(labels?: string[] | null): BenefitProfile {
+  const profile: BenefitProfile = { ...DEFAULT_BENEFITS };
+  if (!labels || labels.length === 0) return profile;
+
+  for (const label of labels) {
+    const normalized = label.trim().toLowerCase();
+    if (normalized === "philhealth") profile.hasPhilHealth = true;
+    if (normalized === "yakap") profile.hasYakap = true;
+    if (normalized === "senior citizen") profile.isSenior = true;
+    if (normalized === "pwd") profile.isPwd = true;
+    if (normalized === "4ps") profile.is4ps = true;
+    if (
+      normalized === "philcare hmo" ||
+      normalized === "hmo" ||
+      normalized === "private insurance"
+    ) {
+      profile.hasPhilcare = true;
+    }
+    if (normalized === "no declared benefits") profile.noBenefits = true;
+  }
+
+  if (profile.noBenefits) {
+    return { ...DEFAULT_BENEFITS, noBenefits: true };
+  }
+
+  return profile;
 }
 
 export function useNuraChat(): [NuraChatState, NuraChatActions] {
@@ -223,7 +333,7 @@ export function useNuraChat(): [NuraChatState, NuraChatActions] {
   useEffect(() => {
     let isCancelled = false;
 
-    void ensureSessionId()
+    void ensureSessionId(undefined, stateRef.current.language)
       .then((sessionId) => {
         if (!isCancelled) {
           apiSessionIdRef.current = sessionId;
@@ -275,51 +385,129 @@ export function useNuraChat(): [NuraChatState, NuraChatActions] {
     setState((current) => ({ ...current, currentInput: value }));
   }, []);
 
-  const triggerEmergency = useCallback((value: string) => {
-    setState((current) => ({
-      ...current,
-      currentInput: "",
-      concern: current.step === "asking_concern" ? value : current.concern,
-      isEmergency: true,
-      messages: [...current.messages, userText(value)],
-    }));
+  const setLanguage = useCallback((value: LanguageCode) => {
+    saveStoredLanguage(value);
+    setState((current) => ({ ...current, language: value }));
   }, []);
 
-  const submitConcernValue = useCallback(
-    (value: string) => {
-      if (isEmergencyMessage(value)) {
-        triggerEmergency(value);
+  const submitConcernValue = useCallback(async (value: string) => {
+    const concern = value.trim();
+    if (!concern) return;
+    const language = stateRef.current.language;
+
+    const typingMessage = typing("Sine-check ko muna ang details mo sa backend...");
+    const typingId = typingMessage.id;
+
+    setState((current) => ({
+      ...current,
+      step: "loading",
+      currentInput: "",
+      concern,
+      location: "",
+      benefits: { ...DEFAULT_BENEFITS },
+      facilities: [],
+      reply: "",
+      error: null,
+      isLoading: true,
+      isEmergency: false,
+      messages: [...current.messages, userText(concern), typingMessage],
+    }));
+
+    try {
+      // New concern starts a fresh backend session to avoid stale context.
+      const freshSession = await createSession(language);
+      apiSessionIdRef.current = freshSession.session_id;
+
+      const response = await submitChatTurn(freshSession.session_id, {
+        message: concern,
+        language,
+        intent: "HOSPITAL",
+      });
+
+      apiSessionIdRef.current = response.session_id;
+
+      if (response.response_type === "EMERGENCY" || response.is_emergency) {
+        setState((current) => ({
+          ...current,
+          isLoading: false,
+          isEmergency: true,
+          messages: current.messages.filter((message) => message.id !== typingId),
+        }));
         return;
       }
 
-      setState((current) => ({
-        ...current,
-        step: "asking_location",
-        currentInput: "",
-        concern: value,
-        location: "",
-        benefits: { ...DEFAULT_BENEFITS },
-        facilities: [],
-        reply: "",
-        error: null,
-        messages: [...current.messages, userText(value)],
-      }));
+      const needsLocation = hasMissingField(response, "location_city");
+      const needsBenefits = hasMissingField(response, "benefits");
+      const inferredLocation = response.session?.location_city?.trim() ?? "";
 
-      void wait(600).then(() => {
+      if (response.response_type === "FOLLOW_UP" && (needsLocation || needsBenefits)) {
         setState((current) => ({
           ...current,
+          step: needsLocation ? "asking_location" : "asking_benefits",
+          location: inferredLocation || current.location,
+          benefits: needsBenefits
+            ? toBenefitProfile(response.session?.benefits)
+            : current.benefits,
+          isLoading: false,
+          error: null,
           messages: [
-            ...current.messages,
-            botQuestion(
-              "Okay, noted. Saan ka ngayon? Para mahanap ko ang malapit na pasilidad.",
-              LOCATION_QUICK_REPLIES
-            ),
+            ...current.messages.filter((message) => message.id !== typingId),
+            needsLocation
+              ? botQuestion(response.reply, LOCATION_QUICK_REPLIES)
+              : botText(response.reply),
+            ...(needsBenefits && !needsLocation ? [benefitPicker()] : []),
           ],
         }));
+        return;
+      }
+
+      const resolvedLocation = inferredLocation || "lugar mo";
+      const responseBenefits = toBenefitProfile(response.session?.benefits);
+      const savedPass = saveLatestCarePass({
+        concern,
+        location: resolvedLocation,
+        benefits: responseBenefits,
+        facilities: response.facilities,
+        reply: response.reply,
       });
-    },
-    [triggerEmergency]
-  );
+      cacheResults(response.facilities, response.reply);
+
+      setState((current) => ({
+        ...current,
+        step: "follow_up",
+        location: inferredLocation || current.location,
+        facilities: response.facilities,
+        reply: response.reply,
+        error: null,
+        isLoading: false,
+        carePass: savedPass ?? current.carePass,
+        messages: [
+          ...current.messages.filter((message) => message.id !== typingId),
+          botText(response.reply),
+          resultsMessage({
+            concern,
+            location: resolvedLocation,
+            facilities: response.facilities,
+            reply: response.reply,
+            error: null,
+          }),
+          botQuestion("Ano ang gusto mong gawin?", FOLLOW_UP_CHIPS),
+        ],
+      }));
+    } catch {
+      setState((current) => ({
+        ...current,
+        step: "asking_concern",
+        isLoading: false,
+        error: "May problema sa connection. Subukan ulit mamaya.",
+        messages: [
+          ...current.messages.filter((message) => message.id !== typingId),
+          botText("May problema sa connection. Subukan ulit mamaya."),
+          botQuestion("Ano ang concern o sintomas mo ngayon?", CONCERN_CHIPS),
+        ],
+      }));
+    }
+  }, []);
 
   const askForTypedLocation = useCallback(() => {
     setState((current) => ({
@@ -337,73 +525,126 @@ export function useNuraChat(): [NuraChatState, NuraChatActions] {
     }));
   }, []);
 
-  const submitLocationValue = useCallback(
-    (value: string) => {
-      if (isEmergencyMessage(value)) {
-        triggerEmergency(value);
+  const submitLocationValue = useCallback(async (value: string) => {
+    const location = value.trim();
+    if (!location) return;
+    const language = stateRef.current.language;
+
+    const typingMessage = typing(`Ino-update ang location mo: ${location}...`);
+    const typingId = typingMessage.id;
+
+    setState((current) => ({
+      ...current,
+      step: "loading",
+      currentInput: "",
+      location,
+      isLoading: true,
+      error: null,
+      messages: [...current.messages, userText(location), typingMessage],
+    }));
+
+    try {
+      const response = await submitChatTurn(apiSessionIdRef.current, {
+        message: location,
+        location,
+        language,
+        intent: "HOSPITAL",
+      });
+
+      apiSessionIdRef.current = response.session_id;
+
+      if (response.response_type === "EMERGENCY" || response.is_emergency) {
+        setState((current) => ({
+          ...current,
+          isLoading: false,
+          isEmergency: true,
+          messages: current.messages.filter((message) => message.id !== typingId),
+        }));
         return;
       }
 
-      setState((current) => ({
-        ...current,
-        step: "asking_benefits",
-        currentInput: "",
-        location: value,
-        benefits: { ...DEFAULT_BENEFITS },
-        error: null,
-        messages: [...current.messages, userText(value)],
-      }));
+      const needsLocation = hasMissingField(response, "location_city");
+      const needsBenefits = hasMissingField(response, "benefits");
+      const resolvedLocation = response.session?.location_city?.trim() || location;
 
-      void wait(600).then(() => {
+      if (response.response_type === "FOLLOW_UP" && needsLocation) {
         setState((current) => ({
           ...current,
+          step: "asking_location",
+          location: resolvedLocation,
+          isLoading: false,
           messages: [
-            ...current.messages,
-            botText(
-              `Got it - ${value}. May benefit ka ba? Piliin lahat ng applicable. Okay lang kung wala o hindi sure.`
-            ),
+            ...current.messages.filter((message) => message.id !== typingId),
+            botQuestion(response.reply, LOCATION_QUICK_REPLIES),
+          ],
+        }));
+        return;
+      }
+
+      if (response.response_type === "FOLLOW_UP" && needsBenefits) {
+        setState((current) => ({
+          ...current,
+          step: "asking_benefits",
+          location: resolvedLocation,
+          benefits: toBenefitProfile(response.session?.benefits),
+          isLoading: false,
+          messages: [
+            ...current.messages.filter((message) => message.id !== typingId),
+            botText(response.reply),
             benefitPicker(),
           ],
         }));
-      });
-    },
-    [triggerEmergency]
-  );
-
-  const submitFollowUpValue = useCallback(
-    async (value: string) => {
-      if (isEmergencyMessage(value)) {
-        triggerEmergency(value);
         return;
       }
 
-      const typingMessage = typing();
-      const typingId = typingMessage.id;
-
-      setState((current) => ({
-        ...current,
-        currentInput: "",
-        isLoading: true,
-        messages: [...current.messages, userText(value), typingMessage],
-      }));
-
-      await wait(650);
-
+      const responseBenefits = toBenefitProfile(response.session?.benefits);
+      const savedPass = saveLatestCarePass({
+        concern: stateRef.current.concern || "iyong concern",
+        location: resolvedLocation,
+        benefits: responseBenefits,
+        facilities: response.facilities,
+        reply: response.reply,
+      });
+      cacheResults(response.facilities, response.reply);
       setState((current) => ({
         ...current,
         step: "follow_up",
+        location: resolvedLocation,
+        facilities: response.facilities,
+        reply: response.reply,
+        error: null,
         isLoading: false,
+        carePass: savedPass ?? current.carePass,
         messages: [
           ...current.messages.filter((message) => message.id !== typingId),
-          botText(
-            "Pwede kang mag-search ulit gamit ang ibang concern o ibang lugar. Para sa bagong sintomas, mas okay kung magsimula tayo ulit para malinaw ang rekomendasyon."
-          ),
+          botText(response.reply),
+          resultsMessage({
+            concern: current.concern || "iyong concern",
+            location: resolvedLocation,
+            facilities: response.facilities,
+            reply: response.reply,
+            error: null,
+          }),
           botQuestion("Ano ang gusto mong gawin?", FOLLOW_UP_CHIPS),
         ],
       }));
-    },
-    [triggerEmergency]
-  );
+    } catch {
+      setState((current) => ({
+        ...current,
+        step: "asking_location",
+        isLoading: false,
+        error: "May problema sa connection. Subukan ulit mamaya.",
+        messages: [
+          ...current.messages.filter((message) => message.id !== typingId),
+          botText("May problema sa connection. Subukan ulit mamaya."),
+          botQuestion(
+            "Pakitype ulit ang city o barangay mo para matuloy ang rekomendasyon.",
+            LOCATION_QUICK_REPLIES
+          ),
+        ],
+      }));
+    }
+  }, []);
 
   const sendInput = useCallback(() => {
     const snapshot = stateRef.current;
@@ -414,19 +655,19 @@ export function useNuraChat(): [NuraChatState, NuraChatActions] {
     }
 
     if (snapshot.step === "asking_concern") {
-      submitConcernValue(value);
+      void submitConcernValue(value);
       return;
     }
 
     if (snapshot.step === "asking_location") {
-      submitLocationValue(value);
+      void submitLocationValue(value);
       return;
     }
 
     if (snapshot.step === "follow_up" || snapshot.step === "results") {
-      void submitFollowUpValue(value);
+      void submitConcernValue(value);
     }
-  }, [submitConcernValue, submitFollowUpValue, submitLocationValue]);
+  }, [submitConcernValue, submitLocationValue]);
 
   const chooseQuickReply = useCallback(
     (value: string) => {
@@ -536,6 +777,7 @@ export function useNuraChat(): [NuraChatState, NuraChatActions] {
     const selectedBenefits = { ...snapshot.benefits };
     const concern = snapshot.concern;
     const location = snapshot.location;
+    const language = snapshot.language;
     const benefitSummary = summarizeBenefits(selectedBenefits);
     const typingMessage = typing(
       `Hinahanap ang mga pasilidad para sa ${concern} sa ${location}...`
@@ -552,15 +794,56 @@ export function useNuraChat(): [NuraChatState, NuraChatActions] {
     }));
 
     try {
-      const response = await submitNavigation(
-        apiSessionIdRef.current,
-        concern,
+      const response = await submitChatTurn(apiSessionIdRef.current, {
+        message: concern,
         location,
-        selectedBenefits
-      );
+        benefits: selectedBenefits,
+        language,
+        intent: "HOSPITAL",
+      });
 
       apiSessionIdRef.current = response.session_id;
 
+      if (response.response_type === "EMERGENCY" || response.is_emergency) {
+        setState((current) => ({
+          ...current,
+          isLoading: false,
+          isEmergency: true,
+          messages: current.messages.filter((message) => message.id !== typingId),
+        }));
+        return;
+      }
+
+      const needsLocation = hasMissingField(response, "location_city");
+      const needsBenefits = hasMissingField(response, "benefits");
+
+      if (response.response_type === "FOLLOW_UP" && (needsLocation || needsBenefits)) {
+        setState((current) => ({
+          ...current,
+          step: needsLocation ? "asking_location" : "asking_benefits",
+          location: response.session?.location_city?.trim() || current.location,
+          benefits: toBenefitProfile(response.session?.benefits),
+          error: null,
+          isLoading: false,
+          messages: [
+            ...current.messages.filter((message) => message.id !== typingId),
+            needsLocation
+              ? botQuestion(response.reply, LOCATION_QUICK_REPLIES)
+              : botText(response.reply),
+            ...(needsBenefits && !needsLocation ? [benefitPicker()] : []),
+          ],
+        }));
+        return;
+      }
+
+      const resolvedLocation = response.session?.location_city?.trim() || location;
+      const savedPass = saveLatestCarePass({
+        concern,
+        location: resolvedLocation,
+        benefits: selectedBenefits,
+        facilities: response.facilities,
+        reply: response.reply,
+      });
       cacheResults(response.facilities, response.reply);
 
       setState((current) => ({
@@ -570,20 +853,19 @@ export function useNuraChat(): [NuraChatState, NuraChatActions] {
         reply: response.reply,
         error: null,
         isLoading: false,
-        isEmergency: response.is_emergency,
+        isEmergency: false,
+        carePass: savedPass ?? current.carePass,
         messages: [
           ...current.messages.filter((message) => message.id !== typingId),
-          botText("Base sa concern mo at location, ito ang rekomenda ko:"),
+          botText(response.reply),
           resultsMessage({
             concern,
-            location,
+            location: resolvedLocation,
             facilities: response.facilities,
             reply: response.reply,
             error: null,
           }),
-          botText(
-            "Hindi ito medical advice. Kung lumala, pumunta agad sa Emergency Room o tumawag sa 911. May iba pa bang tanong?"
-          ),
+          botQuestion("Ano ang gusto mong gawin?", FOLLOW_UP_CHIPS),
         ],
       }));
     } catch {
@@ -591,27 +873,56 @@ export function useNuraChat(): [NuraChatState, NuraChatActions] {
 
       setState((current) => ({
         ...current,
-        step: "follow_up",
+        step: "asking_benefits",
         facilities: [],
         reply: "",
         error,
         isLoading: false,
         messages: [
           ...current.messages.filter((message) => message.id !== typingId),
-          botText("Base sa concern mo at location, ito ang nahanap ko:"),
-          resultsMessage({
-            concern,
-            location,
-            facilities: [],
-            reply: "",
-            error,
-          }),
-          botText(
-            "Hindi ito medical advice. Kung lumala, pumunta agad sa Emergency Room o tumawag sa 911. May iba pa bang tanong?"
-          ),
+          botText(error),
+          benefitPicker(),
         ],
       }));
     }
+  }, []);
+
+  const openCarePass = useCallback(() => {
+    const pass = getCarePass();
+
+    if (!pass) {
+      setState((current) => ({
+        ...current,
+        carePass: null,
+        messages: current.messages.filter((message) => message.type !== "care-pass"),
+      }));
+      return;
+    }
+
+    setState((current) => ({
+      ...current,
+      carePass: pass,
+      messages: [
+        ...current.messages.filter((message) => message.type !== "care-pass"),
+        carePassMessage(pass),
+      ],
+    }));
+  }, []);
+
+  const closeCarePass = useCallback(() => {
+    setState((current) => ({
+      ...current,
+      messages: current.messages.filter((message) => message.type !== "care-pass"),
+    }));
+  }, []);
+
+  const clearSavedCarePass = useCallback(() => {
+    clearCarePass();
+    setState((current) => ({
+      ...current,
+      carePass: null,
+      messages: current.messages.filter((message) => message.type !== "care-pass"),
+    }));
   }, []);
 
   const dismissEmergency = useCallback(() => {
@@ -634,10 +945,14 @@ export function useNuraChat(): [NuraChatState, NuraChatActions] {
 
   const actions: NuraChatActions = {
     setInput,
+    setLanguage,
     sendInput,
     chooseQuickReply,
     toggleBenefit,
     submitBenefits,
+    openCarePass,
+    closeCarePass,
+    clearSavedCarePass,
     dismissEmergency,
     reset,
   };

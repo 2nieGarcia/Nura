@@ -122,7 +122,10 @@ class ChatOrchestrator:
         # Step 3: Missing info gate.
         missing_fields = self._get_missing_fields(session)
         if missing_fields:
-            follow_up_message = self._build_follow_up_message(missing_fields)
+            follow_up_message = self._build_follow_up_message(
+                missing_fields,
+                session.language,
+            )
             session = self.session_repository.update_session(
                 session_id=request.session_id,
                 append_messages=[{"role": "assistant", "content": follow_up_message}],
@@ -201,13 +204,25 @@ class ChatOrchestrator:
             missing.append("benefits")
         return missing
 
-    def _build_follow_up_message(self, missing_fields: list[str]) -> str:
+    def _build_follow_up_message(
+        self,
+        missing_fields: list[str],
+        language: str | None,
+    ) -> str:
+        if language == "en":
+            prompts = {
+                "location_city": "What city are you currently in?",
+                "benefits": "What benefits or memberships do you have (e.g., PhilHealth)?",
+            }
+            followups = [prompts[field] for field in missing_fields if field in prompts]
+            return "I need a bit more information before I can help: " + " ".join(followups)
+
         prompts = {
-            "location_city": "What city are you currently in?",
-            "benefits": "What benefits or memberships do you have (e.g., PhilHealth)?",
+            "location_city": "Saan ka ngayon? City o barangay.",
+            "benefits": "May benefit ka ba, tulad ng PhilHealth, YAKAP, Senior, PWD, 4Ps, o HMO?",
         }
         followups = [prompts[field] for field in missing_fields if field in prompts]
-        return "I need a bit more information before I can help: " + " ".join(followups)
+        return "Kailangan ko pa ng kaunting impormasyon: " + " ".join(followups)
 
     def _infer_intent(self, message: str) -> str:
         normalized = message.lower()

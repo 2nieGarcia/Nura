@@ -7,6 +7,7 @@ import type {
 import { AlternateRow, PrimaryRecommendation } from "../ui/FacilityCard";
 import { BenefitPickerCard } from "./BenefitPickerCard";
 import { BotBubble } from "./BotBubble";
+import { CarePassCard } from "./CarePassCard";
 import { QuickReplies } from "./QuickReplies";
 import { TypingIndicator } from "./TypingIndicator";
 import { UserBubble } from "./UserBubble";
@@ -142,6 +143,16 @@ export function ChatMessageItem({
 
   if (message.type === "results") {
     return <ResultsBlock message={message} />;
+  }
+
+  if (message.type === "care-pass") {
+    return (
+      <CarePassCard
+        pass={message.pass}
+        onClose={actions.closeCarePass}
+        onClear={actions.clearSavedCarePass}
+      />
+    );
   }
 
   return null;
