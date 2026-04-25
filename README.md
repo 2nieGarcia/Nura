@@ -118,7 +118,7 @@ It does **not** diagnose disease, prescribe medicine, replace clinical care, or 
 
 ## High-Level Architecture
 
-./docs/screenshots/architecture.png
+![Nura architecture diagram](docs/screenshots/architecture.png)
 
 ---
 

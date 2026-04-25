@@ -54,3 +54,38 @@ Ship a safe, Filipino-first healthcare access navigator MVP with deterministic e
 ## Maintenance Notes
 - Keep this file synchronized with real implementation progress.
 - When an item is done, mark it complete and add related file references in PR/commit notes.
+
+## Parallel Delivery Plan (4 Developers, Low-Conflict)
+
+### Branching And Merge Rules
+- Base branch: `main`
+- Integration branch: `release/mvp-core-routing`
+- Feature branches:
+	- `feat/indexing-postgis`
+	- `feat/rag-benefit-retrieval`
+	- `feat/frontend-ux-reliability`
+	- `feat/lead-integration-qa`
+- Keep each PR under ~400 lines changed when possible.
+- Rebase feature branches daily to reduce drift.
+- Merge order per sprint day: Indexing -> RAG -> UI/UX -> Project Lead integration.
+
+### Work Breakdown And Commit History Plan
+
+| Developer | Focus | Primary File Ownership (avoid overlap) | Step-by-step commit history (in order) | PR Gate Before Merge |
+|---|---|---|---|---|
+| Dev A | Indexing and facility retrieval performance | `backend/app/infrastructure/db/`, `backend/app/ports/facility_search_port.py`, `backend/tests/integration/db/test_postgis_facility_search.py`, `backend/docs/data_indexing.md` | 1) `chore(db): add supabase db client and settings scaffolding`<br>2) `feat(indexing): add PostGIS nearby query with radius and benefit filters`<br>3) `feat(indexing): add ranking by reliability then distance`<br>4) `feat(indexing): add SQL migration docs for GIST index on geom and filter indexes`<br>5) `test(indexing): add integration tests for facility query edge cases`<br>6) `docs(indexing): add tuning guide and EXPLAIN checklist` | Query returns top 5 facilities in deterministic order for fixed seed data; integration tests pass. |
+| Dev B | RAG retrieval and composition context | `backend/app/infrastructure/retrieval/`, `backend/app/ports/benefit_retrieval_port.py`, `backend/app/infrastructure/llm/gemini_flash_client.py`, `backend/tests/integration/retrieval/test_benefit_retrieval.py`, `backend/tests/contract/api/test_chat_contract.py` | 1) `chore(rag): add pgvector client adapter and env wiring`<br>2) `feat(rag): implement benefit guide retrieval with top-k chunks`<br>3) `feat(rag): add retrieval fallback when vector store unavailable`<br>4) `feat(rag): implement response composer interface with strict prompt slots`<br>5) `test(rag): add unit tests for retrieval scoring and fallback behavior`<br>6) `test(contract): validate /chat response shape with retrieved guidance` | Retrieval returns bounded, source-labeled chunks; fallback path works; contract tests pass. |
+| Dev C | Frontend UI/UX and reliability states | `frontend/src/components/`, `frontend/src/lib/api.ts`, `frontend/src/App.tsx`, `frontend/src/index.css`, `frontend/src/lib/emergency.ts`, `frontend/src/__tests__/` | 1) `feat(ui): improve facility cards for source, reliability, and hours visibility`<br>2) `feat(ui): strengthen emergency banner behavior and non-dismissable state`<br>3) `feat(ui): add weak-connection and retry affordances in chat flow`<br>4) `feat(ui): preserve draft input during loading and reconnect`<br>5) `test(ui): add emergency bypass tests and offline banner tests`<br>6) `chore(ui): align copy and labels to Filipino-first policy` | Emergency path bypasses normal flow in tests; offline/weak connection UX is visible and deterministic. |
+| Dev D (Project Lead) | Integration, safety gates, and release readiness | `backend/app/api/`, `backend/app/main.py`, `backend/app/services/chat_service.py`, `docs/plan.md`, `docs/llms.txt`, root `README.md`, CI config files | 1) `chore(lead): define feature flags and env matrix for local/staging/prod`<br>2) `feat(lead): wire endpoint orchestration across emergency -> geocode -> facility -> rag -> response`<br>3) `test(lead): add smoke tests for 4 demo scenarios`<br>4) `docs(lead): update plan and llms context to reflect completed integrations`<br>5) `chore(lead): freeze MVP scope and add release checklist`<br>6) `release(lead): merge to release branch and tag demo candidate` | All 4 demo scenarios pass smoke tests; safety disclaimer always present; release checklist complete. |
+
+### Merge Sequence Per Cycle
+1. Dev A opens PR first; Dev B rebases after Dev A merge.
+2. Dev B opens PR second; Dev C rebases after Dev B merge.
+3. Dev C opens PR third; Project Lead rebases before integration PR.
+4. Project Lead performs final integration PR and updates release notes.
+
+### Conflict Prevention Checklist
+- One owner per directory per sprint cycle.
+- Shared files (`backend/app/main.py`, `frontend/src/App.tsx`, `docs/plan.md`) only edited by Project Lead unless pre-approved.
+- Use short-lived feature flags for incomplete integrations.
+- Do not mix refactors with feature behavior changes in one commit.
