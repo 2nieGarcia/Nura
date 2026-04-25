@@ -5,6 +5,7 @@ import unittest
 from db.session_repository import SessionNotFoundError
 from models.chat import ChatRequest, ServiceResult
 from models.session import SessionState
+from services.interfaces import InferenceResult
 from services.orchestrator import ChatOrchestrator, SessionExpiredError
 
 
@@ -80,6 +81,16 @@ class SpyAIRagService:
             message="RAG answer",
             data={"source": "test-ai-rag-service"},
         )
+
+
+class StubInferenceService:
+    def __init__(self, inference_result: InferenceResult) -> None:
+        self.inference_result = inference_result
+        self.called = False
+
+    def infer(self, session: SessionState, message: str) -> InferenceResult:
+        self.called = True
+        return self.inference_result
 
 
 def build_session(
@@ -202,6 +213,41 @@ class ChatOrchestratorTests(unittest.TestCase):
         self.assertTrue(hospital_service.called)
         self.assertFalse(ai_rag_service.called)
         self.assertEqual(session.conversation_history[-1]["content"], "Hospital recommendation")
+
+    def test_uses_llm_inference_for_missing_fields_and_intent(self) -> None:
+        session = build_session(location_city=None, benefits=[])
+        repository = InMemorySessionRepository(session)
+        hospital_service = SpyHospitalService()
+        ai_rag_service = SpyAIRagService()
+        inference_service = StubInferenceService(
+            InferenceResult(
+                intent="HOSPITAL",
+                location_city="Mandaue City",
+                benefits=["PhilHealth"],
+                source="llm",
+            )
+        )
+        orchestrator = ChatOrchestrator(
+            session_repository=repository,
+            emergency_classifier=StubEmergencyClassifier([]),
+            hospital_service=hospital_service,
+            ai_rag_service=ai_rag_service,
+            session_ttl_minutes=60,
+            inference_service=inference_service,
+        )
+
+        response = orchestrator.handle_chat(
+            ChatRequest(session_id=session.id, message="Can you help me?")
+        )
+
+        self.assertEqual(response.response_type, "RECOMMENDATION")
+        self.assertEqual(session.location_city, "Mandaue City")
+        self.assertEqual(session.benefits, ["PhilHealth"])
+        self.assertEqual(response.data["intent"], "HOSPITAL")
+        self.assertEqual(response.data["routing_meta"]["intent_source"], "llm")
+        self.assertTrue(hospital_service.called)
+        self.assertFalse(ai_rag_service.called)
+        self.assertTrue(inference_service.called)
 
     def test_routes_to_rag_service_by_default(self) -> None:
         session = build_session(location_city="Cebu", benefits=["PhilHealth"])

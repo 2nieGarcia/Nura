@@ -3,7 +3,13 @@ import re
 from db.session_repository import SessionNotFoundError, SessionRepository
 from models.chat import ChatRequest, ChatResponse
 from models.session import SessionState
-from services.interfaces import AIRagService, EmergencyClassifier, HospitalService
+from services.interfaces import (
+    AIRagService,
+    EmergencyClassifier,
+    HospitalService,
+    InferenceResult,
+    OrchestratorInferenceService,
+)
 
 
 class SessionExpiredError(Exception):
@@ -68,12 +74,14 @@ class ChatOrchestrator:
         hospital_service: HospitalService,
         ai_rag_service: AIRagService,
         session_ttl_minutes: int,
+        inference_service: OrchestratorInferenceService | None = None,
     ) -> None:
         self.session_repository = session_repository
         self.emergency_classifier = emergency_classifier
         self.hospital_service = hospital_service
         self.ai_rag_service = ai_rag_service
         self.session_ttl_minutes = session_ttl_minutes
+        self.inference_service = inference_service
 
     def handle_chat(self, request: ChatRequest) -> ChatResponse:
         # Step 1: Emergency check (immediate return if keyword match).
@@ -101,7 +109,8 @@ class ChatOrchestrator:
         if session.is_expired:
             raise SessionExpiredError(f"Session {request.session_id} has expired.")
 
-        fields_to_update = self._build_fields_to_update(session, request)
+        inference_result = self._infer_with_service(session, request.message)
+        fields_to_update = self._build_fields_to_update(session, request, inference_result)
 
         session = self.session_repository.update_session(
             session_id=request.session_id,
@@ -128,7 +137,7 @@ class ChatOrchestrator:
             )
 
         # Step 4: Route to HospitalService or AIRagService by intent.
-        intent = request.intent or self._infer_intent(request.message)
+        intent, intent_source = self._resolve_intent(request, inference_result)
         if intent == "HOSPITAL":
             result = self.hospital_service.recommend(session, request.message)
         else:
@@ -144,8 +153,45 @@ class ChatOrchestrator:
             session_id=session.id,
             response_type=result.response_type,
             message=result.message,
-            data={**result.data, "intent": intent, "session": self._session_view(session)},
+            data={
+                **result.data,
+                "intent": intent,
+                "routing_meta": self._routing_meta(
+                    inference_result=inference_result,
+                    intent_source=intent_source,
+                ),
+                "session": self._session_view(session),
+            },
         )
+
+    def _infer_with_service(self, session: SessionState, message: str) -> InferenceResult:
+        if self.inference_service is None:
+            return InferenceResult(source="disabled")
+        return self.inference_service.infer(session, message)
+
+    def _resolve_intent(
+        self,
+        request: ChatRequest,
+        inference_result: InferenceResult,
+    ) -> tuple[str, str]:
+        if request.intent is not None:
+            return request.intent, "request"
+        if inference_result.intent is not None:
+            return inference_result.intent, "llm"
+        return self._infer_intent(request.message), "rules"
+
+    def _routing_meta(
+        self,
+        inference_result: InferenceResult,
+        intent_source: str,
+    ) -> dict[str, str]:
+        routing_meta = {
+            "intent_source": intent_source,
+            "inference_source": inference_result.source,
+        }
+        if inference_result.error:
+            routing_meta["inference_error"] = inference_result.error
+        return routing_meta
 
     def _get_missing_fields(self, session: SessionState) -> list[str]:
         missing: list[str] = []
@@ -185,6 +231,7 @@ class ChatOrchestrator:
         self,
         session: SessionState,
         request: ChatRequest,
+        inference_result: InferenceResult,
     ) -> dict[str, object]:
         fields_to_update: dict[str, object] = {}
 
@@ -198,7 +245,12 @@ class ChatOrchestrator:
             if city:
                 fields_to_update["location_city"] = city
         elif not session.location_city:
-            city = self._extract_location_city(request.message)
+            city = self._normalize_city(inference_result.location_city or "")
+            if city:
+                fields_to_update["location_city"] = city
+                fields_to_update["location_raw"] = request.message
+            else:
+                city = self._extract_location_city(request.message)
             if city:
                 fields_to_update["location_city"] = city
                 fields_to_update["location_raw"] = request.message
@@ -206,7 +258,9 @@ class ChatOrchestrator:
         if request.benefits is not None:
             fields_to_update["benefits"] = self._normalize_benefits(request.benefits)
         elif not session.benefits:
-            inferred_benefits = self._extract_benefits(request.message)
+            inferred_benefits = self._normalize_benefits(inference_result.benefits)
+            if not inferred_benefits:
+                inferred_benefits = self._extract_benefits(request.message)
             if inferred_benefits:
                 fields_to_update["benefits"] = inferred_benefits
 
