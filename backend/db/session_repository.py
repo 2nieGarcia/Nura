@@ -1,10 +1,13 @@
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from supabase import Client
-
 from models.session import SessionState
+
+if TYPE_CHECKING:
+    from supabase import Client
+else:
+    Client = Any
 
 
 class SessionNotFoundError(Exception):

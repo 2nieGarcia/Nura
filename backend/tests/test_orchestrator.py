@@ -153,6 +153,33 @@ class ChatOrchestratorTests(unittest.TestCase):
         self.assertFalse(hospital_service.called)
         self.assertFalse(ai_rag_service.called)
 
+    def test_infers_city_and_benefits_from_user_message(self) -> None:
+        session = build_session(location_city=None, benefits=[])
+        repository = InMemorySessionRepository(session)
+        hospital_service = SpyHospitalService()
+        ai_rag_service = SpyAIRagService()
+        orchestrator = ChatOrchestrator(
+            session_repository=repository,
+            emergency_classifier=StubEmergencyClassifier([]),
+            hospital_service=hospital_service,
+            ai_rag_service=ai_rag_service,
+            session_ttl_minutes=60,
+        )
+
+        response = orchestrator.handle_chat(
+            ChatRequest(
+                session_id=session.id,
+                message="I'm in cebu city and I have philhealth.",
+            )
+        )
+
+        self.assertEqual(response.response_type, "RAG_ANSWER")
+        self.assertEqual(session.location_city, "Cebu City")
+        self.assertEqual(session.benefits, ["PhilHealth"])
+        self.assertEqual(response.missing_fields, [])
+        self.assertFalse(hospital_service.called)
+        self.assertTrue(ai_rag_service.called)
+
     def test_routes_to_hospital_service_for_hospital_intent(self) -> None:
         session = build_session(location_city="Cebu", benefits=["PhilHealth"])
         repository = InMemorySessionRepository(session)
