@@ -1,172 +1,319 @@
-# Nura
+<div align="center">
 
-Nura is a multilingual healthcare access navigator for Filipinos. It helps users understand available benefits, find relevant accredited facilities, and prepare what to ask at the facility desk.
+# Nura — Filipino Healthcare Access Navigator
 
-Nura is not a doctor. It does not diagnose, prescribe, assess clinical severity, or replace professional medical care. Emergency routing is deterministic keyword matching and always runs before session lookup, LLM calls, RAG retrieval, or facility search.
+### *Hindi doktor. Gabay sa pasilidad at benepisyo.*
 
-Built for InnOlympics 2026 - Pangarap sa Kalusugan Track.
+[![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.111+-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![React](https://img.shields.io/badge/React-18+-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev)
+[![Supabase](https://img.shields.io/badge/Supabase-pgvector-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white)](https://supabase.com)
+[![Gemini](https://img.shields.io/badge/Google-Gemini_2.5_Flash-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://ai.google.dev)
+[![PWA](https://img.shields.io/badge/PWA-Offline_Ready-5A0FC8?style=for-the-badge&logo=pwa&logoColor=white)](https://web.dev/progressive-web-apps/)
 
-## Current Architecture
+<br/>
 
-```text
-Frontend (React/Vite)
-        |
-        | REST JSON
-        v
-Backend (FastAPI, /api/v1)
-        |
-        +-- emergency keyword classifier
-        +-- session repository (Supabase or memory fallback)
-        +-- orchestrator inference (optional Vertex Gemini extraction)
-        +-- AI/RAG service
-        |      +-- Vertex text-embedding-004 query embeddings
-        |      +-- Supabase pgvector match_benefits RPC
-        |      +-- Gemini response composition
-        |      +-- optional response translation
-        |
-        +-- hospital service
-               +-- Supabase health_facilities search
-               +-- exact city, fuzzy city, region fallback
-               +-- frontend-compatible facility normalization
+*A multilingual chatbot that helps Filipinos navigate the healthcare system — telling you **where to go**, **what to bring**, and **what to say at the front desk**. No diagnosis. No medical advice. Just practical access guidance.*
+
+Built for **InnOlympics 2026 — Pangarap sa Kalusugan Track** | April 25–26, 2026 | KMC Exxa Tower, Taguig
+
+[Overview](#-overview) •
+[Key Features](#-key-features) •
+[Architecture](#-architecture) •
+[Tech Stack](#-tech-stack) •
+[Quick Start](#-quick-start) •
+[API Reference](#-api-reference) •
+[Team](#-team)
+
+</div>
+
+---
+
+## Overview
+
+Most Filipinos know free or subsidized healthcare options exist — but the systems are fragmented, the requirements are unclear, and navigating them wastes time and money that many can't afford to lose.
+
+**Nura** solves this by acting as a conversational navigator:
+
+1. User describes their concern in plain Filipino (or Cebuano, Ilocano, Hiligaynon, English)
+2. Nura asks for their city and applicable benefits (PhilHealth, YAKAP, 4Ps, Senior, PWD, etc.)
+3. Nura returns the **top facility** with name, address, what to bring, what to say, and an embedded map
+
+> **Safety guarantee:** Emergency detection is deterministic keyword matching and always runs before any session lookup, LLM calls, RAG retrieval, or facility search. It cannot be bypassed.
+
+---
+
+## Key Features
+
+<table>
+<tr>
+<td width="50%">
+
+### Conversational Intelligence
+- **Chat-Based Flow** — Not a form wizard. A real chat thread that preserves context
+- **Emergency Detection** — Deterministic keyword classifier runs before any LLM call
+- **Benefit-Aware Routing** — Filters facilities by PhilHealth, YAKAP, Malasakit, 4Ps, Senior, PWD
+- **RAG-Backed Answers** — pgvector retrieval over PhilHealth benefit guides via Vertex AI
+
+</td>
+<td width="50%">
+
+### Offline & Access-First Design
+- **Multilingual** — Filipino-first; supports Cebuano, Ilocano, Hiligaynon, English
+- **Care Pass** — Auto-saves last recommendation locally for offline access
+- **Offline-Ready PWA** — Installable, cached shell, last results survive network loss
+- **No Account Required** — Nothing stored on server; all session data is ephemeral
+
+</td>
+</tr>
+</table>
+
+---
+
+## Architecture
+
+```
+Frontend (React/Vite PWA)
+        │
+        │  REST JSON
+        ▼
+Backend (FastAPI /api/v1)
+        │
+        ├── Emergency keyword classifier (deterministic, runs first)
+        ├── Session repository (Supabase or in-memory fallback)
+        ├── Orchestrator inference (Vertex Gemini — intent/city/benefit extraction)
+        ├── AI/RAG service
+        │      ├── Vertex text-embedding-004 (query embedding)
+        │      ├── Supabase pgvector match_benefits RPC
+        │      └── Gemini response composition + translation
+        │
+        └── Hospital service
+               ├── Supabase health_facilities search
+               ├── Exact city → fuzzy city → region fallback
+               └── Frontend-compatible facility normalization
 ```
 
-The source of truth is this `Nura` repo. The separate `nura-rag/backend/app` shape was merged into the existing `Nura/backend` service boundaries rather than copied as a second app.
+---
 
-## Repository Structure
+## Tech Stack
 
-```text
-Nura/
-|-- backend/
-|   |-- main.py
-|   |-- config.py
-|   |-- dependencies.py
-|   |-- models/
-|   |   |-- chat.py
-|   |   |-- session.py
-|   |-- routers/
-|   |   |-- chat.py
-|   |   |-- session.py
-|   |-- services/
-|   |   |-- orchestrator.py
-|   |   |-- emergency_classifier.py
-|   |   |-- orchestrator_inference.py
-|   |   |-- ai_rag_service.py
-|   |   |-- hospital_service.py
-|   |-- db/
-|   |   |-- session_repository.py
-|   |   |-- supabase_client.py
-|   |   |-- migrations/
-|   |       |-- 001_create_sessions.sql
-|   |       |-- 002_create_rag_facility_tables.sql
-|   |-- scripts/
-|       |-- ingest_philhealth.py
-|
-|-- frontend/
-|   |-- src/lib/api.ts
-|   |-- src/types/chat.ts
-|   |-- src/types/facility.ts
-|
-|-- data/emergency_keywords.json
-|-- docs/
-|-- README.md
+<table>
+<tr>
+<th>Category</th>
+<th>Technology</th>
+<th>Purpose</th>
+</tr>
+<tr>
+<td><b>Frontend</b></td>
+<td>React 18 + TypeScript + Vite</td>
+<td>Chat UI, PWA shell, offline caching</td>
+</tr>
+<tr>
+<td><b>Styling</b></td>
+<td>Tailwind CSS</td>
+<td>Custom design tokens, Filipino civic register</td>
+</tr>
+<tr>
+<td><b>API Framework</b></td>
+<td>FastAPI + Uvicorn</td>
+<td>High-performance async Python backend</td>
+</tr>
+<tr>
+<td><b>Database</b></td>
+<td>Supabase (PostgreSQL + pgvector)</td>
+<td>Sessions, facility data, RAG embeddings</td>
+</tr>
+<tr>
+<td><b>LLM Inference</b></td>
+<td>Google Gemini 2.5 Flash</td>
+<td>Response composition, orchestrator extraction</td>
+</tr>
+<tr>
+<td><b>Embeddings</b></td>
+<td>Vertex AI text-embedding-004</td>
+<td>Benefit guide RAG retrieval</td>
+</tr>
+<tr>
+<td><b>Translation</b></td>
+<td>deep-translator</td>
+<td>Optional dialect response translation</td>
+</tr>
+<tr>
+<td><b>PWA</b></td>
+<td>Workbox (vite-plugin-pwa)</td>
+<td>Offline support, installable shell</td>
+</tr>
+<tr>
+<td><b>Maps</b></td>
+<td>Google Maps Embed API / OpenStreetMap</td>
+<td>Facility map previews and directions</td>
+</tr>
+<tr>
+<td><b>Deployment</b></td>
+<td>Firebase / Google Cloud</td>
+<td>Frontend hosting + Cloud Run backend</td>
+</tr>
+</table>
+
+---
+
+## Project Structure
+
+```
+nura/
+├── backend/
+│   ├── main.py                  # FastAPI app factory
+│   ├── config.py                # Settings (pydantic-settings)
+│   ├── dependencies.py          # DI wiring
+│   ├── models/                  # Pydantic schemas
+│   ├── routers/                 # /chat and /session endpoints
+│   ├── services/
+│   │   ├── orchestrator.py      # Main pipeline
+│   │   ├── emergency_classifier.py
+│   │   ├── orchestrator_inference.py
+│   │   ├── ai_rag_service.py    # RAG retrieval + Gemini composition
+│   │   └── hospital_service.py  # Facility search + normalization
+│   ├── db/
+│   │   ├── session_repository.py
+│   │   ├── supabase_client.py
+│   │   └── migrations/
+│   └── scripts/
+│       └── ingest_philhealth.py # PDF → pgvector ingestion
+│
+├── frontend/
+│   └── src/
+│       ├── App.tsx
+│       ├── components/
+│       │   ├── chat/            # Chat thread, bubbles, benefit picker
+│       │   ├── layout/          # AppShell
+│       │   ├── screens/         # Emergency, welcome
+│       │   └── ui/              # Facility cards, map preview, chips
+│       ├── lib/
+│       │   ├── api.ts           # Backend client
+│       │   ├── useNuraChat.ts   # Chat state machine
+│       │   ├── emergency.ts     # Client-side keyword guard
+│       │   └── storage.ts       # Care pass + offline cache
+│       └── types/               # Shared TypeScript types
+│
+├── data/
+│   └── emergency_keywords.json  # Tagalog, Cebuano, English keywords
+│
+└── docs/
+    ├── plan.md
+    └── llms.txt
 ```
 
-## Backend Setup
+---
 
-```powershell
-cd Nura\backend
+## Quick Start
+
+### Prerequisites
+
+- Python 3.11+
+- Node.js 18+
+- A Supabase project *(or run with `SESSION_BACKEND=memory` for local dev)*
+- A Google API key for Gemini *(or skip for deterministic fallback mode)*
+
+### Backend
+
+```bash
+cd backend
 python -m venv venv
-venv\Scripts\activate
+source venv/bin/activate        # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-copy .env.example .env
+cp .env.example .env            # Fill in your keys
+uvicorn main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-For local smoke tests without Supabase or Gemini, set:
+**Smoke test (no keys required):**
 
+Set in `.env`:
 ```env
 SESSION_BACKEND=memory
 SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
 GOOGLE_API_KEY=
-VERTEX_PROJECT_ID=
 ```
 
-Run the API:
+Then: `GET http://127.0.0.1:8000/health` → `{"status": "ok"}`
 
-```powershell
-python -m uvicorn main:app --reload --host 127.0.0.1 --port 8000
+### Frontend
+
+```bash
+cd frontend
+npm install
+cp .env.example .env
+npm run dev
 ```
 
-Health check:
+Open `http://localhost:5173`
 
-```text
-GET http://127.0.0.1:8000/health
-```
+---
 
-## Backend Environment Variables
+## Environment Variables
 
-Copy `backend/.env.example` to `backend/.env`.
+### Backend (`backend/.env`)
 
-| Variable | Purpose |
+| Variable | Required | Description |
+|---|---|---|
+| `SUPABASE_URL` | For full mode | Supabase project URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | For full mode | Supabase server key |
+| `SESSION_BACKEND` | No | `auto` (default), `memory`, or `supabase` |
+| `GOOGLE_API_KEY` | For AI | Gemini API key |
+| `VERTEX_PROJECT_ID` | For RAG | GCP project for embeddings |
+| `VERTEX_LOCATION` | No | Defaults to `us-central1` |
+| `GEMINI_MODEL` | No | Defaults to `gemini-2.5-flash` |
+| `TRANSLATION_ENABLED` | No | Enable deep_translator (default: `true`) |
+
+### Frontend (`frontend/.env`)
+
+| Variable | Description |
 |---|---|
-| `SUPABASE_URL` | Supabase project URL for sessions, RAG, and facilities. |
-| `SUPABASE_SERVICE_ROLE_KEY` | Server-side Supabase key. Required for Supabase-backed runtime and ingestion. |
-| `SESSION_BACKEND` | `auto`, `memory`, or `supabase`. Use `memory` for local frontend smoke tests. |
-| `SESSION_TTL_MINUTES` | Rolling session expiration window. |
-| `ALLOWED_ORIGINS` | Comma-separated frontend origins for CORS. |
-| `VERTEX_PROJECT_ID` or `GCP_PROJECT_ID` | Google Cloud project for Vertex embeddings and optional orchestrator inference. |
-| `VERTEX_LOCATION` or `GCP_REGION` | Vertex location. Defaults to `us-central1`. |
-| `VERTEX_MODEL` | Optional orchestrator extraction model used before rule fallback. |
-| `VERTEX_TIMEOUT_SECONDS` | Timeout for orchestrator extraction calls. |
-| `GOOGLE_API_KEY` | Gemini API key for answer composition. If missing, service falls back to deterministic copy. |
-| `GEMINI_MODEL` | Gemini model for response composition. |
-| `GEMINI_TIMEOUT_SECONDS` | Timeout for Gemini response composition. |
-| `RAG_EMBEDDING_MODEL` | Vertex embedding model. Default: `text-embedding-004`. |
-| `RAG_MATCH_RPC` | Supabase RPC name for pgvector retrieval. Default: `match_benefits`. |
-| `RAG_MATCH_THRESHOLD` | Similarity threshold passed to the RPC. |
-| `RAG_MATCH_COUNT` | Maximum retrieved benefit chunks. |
-| `TRANSLATION_ENABLED` | Enables `deep_translator` response translation when language is not English. |
-| `FACILITY_TABLE_NAME` | Facility table. Default: `health_facilities`. |
-| `FACILITY_DEFAULT_REGION` | Optional region prefilter. Leave blank when only city is known. |
-| `FACILITY_RESULT_LIMIT` | Maximum facilities returned to the frontend. |
-| `FACILITY_MAX_CANDIDATES` | Candidate rows fetched before exact/fuzzy matching. |
-| `FACILITY_FUZZY_THRESHOLD` | Fuzzy city match threshold from 0 to 100. |
+| `VITE_API_URL` | Backend URL (default: `http://127.0.0.1:8000/api/v1`) |
+| `VITE_USE_MOCK_API` | Set `true` to bypass backend entirely |
+| `VITE_GOOGLE_MAPS_KEY` | Optional — enables Google Maps embed (falls back to OSM) |
 
-## API Contract
+---
 
-Base URL:
+## Database Setup
 
-```text
-http://127.0.0.1:8000/api/v1
+Run migrations in order in the Supabase SQL editor:
+
+```
+backend/db/migrations/001_create_sessions.sql
+backend/db/migrations/002_create_rag_facility_tables.sql
 ```
 
-### `POST /session`
+Migration `002` creates:
+- `benefit_guides` with `embedding vector(768)`
+- `match_benefits()` pgvector RPC
+- `health_facilities` table with city, region, PhilHealth, and Malasakit fields
 
-Request:
+### Ingesting Benefit Guides
+
+```bash
+python scripts/ingest_philhealth.py \
+  --pdf path/to/philhealth_guide.pdf \
+  --source "PhilHealth Benefits Guide 2025"
+```
+
+---
+
+## API Reference
+
+### `POST /api/v1/session`
+
+```json
+{ "language": "fil" }
+```
+Returns `{ "session_id": "...", "expires_at": "..." }`
+
+### `POST /api/v1/chat`
 
 ```json
 {
-  "language": "fil"
-}
-```
-
-Response:
-
-```json
-{
-  "session_id": "550e8400-e29b-41d4-a716-446655440000",
-  "expires_at": "2026-04-26T11:00:00Z"
-}
-```
-
-### `POST /chat`
-
-Request:
-
-```json
-{
-  "session_id": "550e8400-e29b-41d4-a716-446655440000",
-  "message": "Masakit ulo ko. Saan ako pwede pumunta?",
+  "session_id": "...",
+  "message": "Masakit ulo ko",
   "language": "fil",
   "location_city": "Quezon City",
   "benefits": ["PhilHealth"],
@@ -174,168 +321,105 @@ Request:
 }
 ```
 
-`language`, `location_city`, `benefits`, and `intent` are optional. The frontend currently sends `intent: "HOSPITAL"` for facility navigation.
+**Response types:**
 
-Response:
-
-```json
-{
-  "session_id": "550e8400-e29b-41d4-a716-446655440000",
-  "response_type": "RECOMMENDATION",
-  "message": "Hindi ako doktor...",
-  "data": {
-    "facilities": [
-      {
-        "name": "Quezon City General Hospital",
-        "address": "Quezon City public hospital district",
-        "accreditation": "PhilHealth Accredited",
-        "benefit_to_claim": "Ask the PhilHealth desk to verify coverage and requirements.",
-        "what_to_say": "Magpapa-assess po ako...",
-        "what_to_bring": "Valid ID...",
-        "maps_url": "https://maps.google.com/?q=...",
-        "data_source": "YAKAP",
-        "data_reliability": "LOW"
-      }
-    ],
-    "hospitals": [
-      {
-        "name": "Quezon City General Hospital",
-        "address": "Quezon City public hospital district",
-        "data_source": "YAKAP"
-      }
-    ]
-  },
-  "missing_fields": []
-}
-```
-
-The backend always keeps facilities consumable through `data.facilities`. It also includes `data.hospitals` as an alias for compatibility with existing frontend normalization.
-
-Response types:
-
-| Type | Meaning |
+| `response_type` | Meaning |
 |---|---|
-| `EMERGENCY` | Emergency keyword matched. No LLM, RAG, session lookup, or facility search runs. |
-| `FOLLOW_UP` | Session is missing city or benefits. |
-| `RECOMMENDATION` | Facility search path completed or returned fallback facilities. |
-| `RAG_ANSWER` | Benefit guide RAG path completed or returned fallback guidance. |
+| `EMERGENCY` | Keyword matched — no LLM, no session lookup |
+| `FOLLOW_UP` | Session missing city or benefits |
+| `RECOMMENDATION` | Facility results returned |
+| `RAG_ANSWER` | Benefit guide answer returned |
 
-## Orchestration Rules
+---
 
-The backend pipeline in `services/orchestrator.py` is:
+## Running Tests
 
-1. Emergency keyword detection.
-2. Session lookup and session update.
-3. Session completeness gate for `location_city` and `benefits`.
-4. Intent resolution from request, optional LLM extraction, or rules.
-5. Hospital service or AI/RAG service call.
+```bash
+# Backend
+cd backend
+python -m pytest tests/
 
-Do not move LLM, RAG, or facility work before steps 1-3.
-
-## Database Setup
-
-Run these migrations in order in the Supabase SQL editor:
-
-```text
-backend/db/migrations/001_create_sessions.sql
-backend/db/migrations/002_create_rag_facility_tables.sql
+# Frontend
+cd frontend
+npm run build   # TypeScript + Vite build check
 ```
 
-`002_create_rag_facility_tables.sql` creates:
+---
 
-- `benefit_guides` with `embedding vector(768)`.
-- `match_benefits(query_embedding, match_threshold, match_count)` RPC.
-- `health_facilities` with city, region, PhilHealth, and Malasakit fields.
+## Safety Boundaries
 
-The RAG retriever expects the RPC to return `id`, `content`, `source`, and `similarity`.
+Nura is an educational literacy and healthcare access tool. It does **not**:
 
-## Ingesting Benefit Guides
+- Diagnose conditions
+- Recommend medications or dosages
+- Assess clinical severity or triage patients
+- Replace professional medical advice
 
-After running the RAG migration and configuring Supabase plus Vertex:
+For any message containing emergency keywords (chest pain, stroke, seizure, etc.), Nura immediately returns an emergency response directing the user to call 911 or go to the nearest ER. **This check runs before any LLM call and cannot be bypassed.**
 
-```powershell
-cd Nura\backend
-venv\Scripts\activate
-python scripts\ingest_philhealth.py --pdf path\to\philhealth_benefits.pdf --source "PhilHealth Benefits Guide"
-```
+---
 
-The script extracts PDF text, chunks it, embeds chunks with Vertex `text-embedding-004`, and inserts rows into `benefit_guides`. It has no hardcoded local paths.
+## Track Alignment
 
-## Facility Data Requirements
+**Track:** Pangarap sa Kalusugan — Health & Well-being Access
 
-Populate `health_facilities` with at least:
+**Problem addressed:** Pangarap sa Serbisyong Medikal — Primary care access and system navigation.
 
-```text
-name_of_health_facility
-street
-municipality_city
-region
-is_philhealth
-is_malasakit
-expire_date
-source
-```
+**SDG alignment:** SDG 3 (Good Health and Well-being) · SDG 1 (No Poverty) · SDG 10 (Reduced Inequalities)
 
-Facility search performs:
+---
 
-1. Optional region prefilter from `FACILITY_DEFAULT_REGION`.
-2. Benefit flag filters when the user has PhilHealth, YAKAP, Senior, PWD, 4Ps, or Malasakit.
-3. Exact city match.
-4. Fuzzy city match.
-5. Region or candidate fallback.
+## Team
 
-If Supabase is unavailable or no candidates can be fetched, the service returns local fallback facilities in the same frontend-compatible shape.
+<div align="center">
 
-## Frontend Setup
+### 🐔 Chicken Wings Team
 
-```powershell
-cd Nura\frontend
-npm install
-copy .env.example .env
-npm run dev -- --host 127.0.0.1 --port 5173
-```
+<table>
+<tr>
+<td align="center">
+<img src="https://github.com/2nieGarcia.png" width="100" style="border-radius: 50%"><br>
+<b>Antonio Garcia</b><br>
+<sub>Project Lead & Architecture</sub><br>
+<sub>System design, backend orchestration, integration, and release</sub><br>
+<a href="https://github.com/2nieGarcia">@2nieGarcia</a>
+</td>
+<td align="center">
+<img src="https://github.com/projcjdevs.png" width="100" style="border-radius: 50%"><br>
+<b>Charles Cabatian</b><br>
+<sub>Data Engineering</sub><br>
+<sub>Dataset cleaning, facility data pipeline, and ingestion scripts</sub><br>
+<a href="https://github.com/projcjdevs">@projcjdevs</a>
+</td>
+<td align="center">
+<img src="https://github.com/renzv-compsci.png" width="100" style="border-radius: 50%"><br>
+<b>Renz Jerik Viloria</b><br>
+<sub>AI Implementation</sub><br>
+<sub>RAG pipeline, Gemini integration, embeddings, and translation layer</sub><br>
+<a href="https://github.com/renzv-compsci">@renzv-compsci</a>
+</td>
+<td align="center">
+<img src="https://github.com/NIghtIngale340.png" width="100" style="border-radius: 50%"><br>
+<b>Mark Christian Anub</b><br>
+<sub>Frontend Development</sub><br>
+<sub>React chat UI, PWA shell, offline care pass, and UX design</sub><br>
+<a href="https://github.com/NIghtIngale340">@NIghtIngale340</a>
+</td>
+</tr>
+</table>
 
-Frontend `.env`:
+</div>
 
-```env
-VITE_API_URL=http://127.0.0.1:8000/api/v1
-VITE_USE_MOCK_API=false
-```
+---
 
-Open:
+## License
 
-```text
-http://127.0.0.1:5173
-```
+MIT
 
-## Local Smoke Test
+---
 
-1. Start the backend with `SESSION_BACKEND=memory`.
-2. Start the frontend with `VITE_USE_MOCK_API=false`.
-3. Enter a concern such as `Masakit ulo`.
-4. Enter `Quezon City`.
-5. Select `PhilHealth`.
-6. Submit benefits.
+<div align="center">
 
-Expected result: `POST /api/v1/chat` returns `RECOMMENDATION`, a disclaimer-bearing message, and facilities under `data.facilities` and `data.hospitals`.
+*Built with passion for AI engineering, Filipino healthcare equity, and making complex systems accessible to everyone.*
 
-## Verification Commands
-
-Backend:
-
-```powershell
-cd Nura
-python -m pytest .\backend\tests
-python -m py_compile .\backend\config.py .\backend\dependencies.py .\backend\services\ai_rag_service.py .\backend\services\hospital_service.py .\backend\scripts\ingest_philhealth.py
-```
-
-Frontend contract/build check:
-
-```powershell
-cd Nura\frontend
-npm run build
-```
-
-## Safety Boundary
-
-Nura is strictly an educational literacy and healthcare access tool. It does not provide medical diagnoses, clinical assessments, treatment recommendations, prescriptions, dosage guidance, or medical triage. For emergency keywords, Nura immediately tells the user to call emergency services or go to the nearest ER.
+</div>
