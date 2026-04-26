@@ -62,6 +62,7 @@ export function EmergencyScreen({ onDismiss }: EmergencyScreenProps): JSX.Elemen
       {/* Bottom half: actions. Equal weight call vs. dismiss. */}
       <div className="flex flex-1 flex-col justify-end gap-3 px-5 pb-8 pt-6">
         <a
+          id="emergency-call-button"
           ref={callRef}
           href="tel:911"
           className="inline-flex min-h-[72px] w-full items-center justify-center rounded-stamp bg-stamp px-6 text-[1.5rem] font-bold text-card transition-colors hover:bg-stamp-press"
@@ -70,6 +71,7 @@ export function EmergencyScreen({ onDismiss }: EmergencyScreenProps): JSX.Elemen
         </a>
 
         <button
+          id="emergency-dismiss-button"
           type="button"
           onClick={onDismiss}
           className="inline-flex min-h-[72px] w-full items-center justify-center rounded-stamp border-rule border-ink bg-card px-6 text-body-lg font-semibold text-ink transition-colors hover:bg-paper"

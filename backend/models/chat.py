@@ -1,7 +1,7 @@
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 ResponseType = Literal["EMERGENCY", "FOLLOW_UP", "RECOMMENDATION", "RAG_ANSWER"]
 
@@ -9,10 +9,27 @@ ResponseType = Literal["EMERGENCY", "FOLLOW_UP", "RECOMMENDATION", "RAG_ANSWER"]
 class ChatRequest(BaseModel):
     session_id: UUID
     message: str = Field(min_length=1)
+    concern: str | None = None
     language: str | None = None
     location_city: str | None = None
     benefits: list[str] | None = None
     intent: Literal["HOSPITAL", "RAG"] | None = None
+
+    @field_validator("message")
+    @classmethod
+    def strip_non_empty_message(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("message must not be blank")
+        return cleaned
+
+    @field_validator("concern", "language", "location_city")
+    @classmethod
+    def strip_optional_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        return cleaned or None
 
 
 class ChatResponse(BaseModel):

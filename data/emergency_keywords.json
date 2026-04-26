@@ -6,15 +6,29 @@
     "not breathing",
     "severe bleeding",
     "unconscious",
-    "cannot breathe"
+    "cannot breathe",
+    "difficulty breathing",
+    "overdose",
+    "self harm",
+    "suicidal",
+    "suicide"
   ],
   "by_language": {
     "tagalog": [
       "atake sa puso",
+      "hirap huminga",
       "hindi makahinga",
       "nahimatay",
+      "walang malay",
+      "kombulsyon",
+      "masakit dibdib",
+      "pananakit ng dibdib",
       "dumudugo nang sobra",
-      "matinding sakit sa dibdib"
+      "matinding pagdurugo",
+      "matinding sakit sa dibdib",
+      "hindi makagalaw",
+      "hindi makapagsalita",
+      "buntis bleeding"
     ],
     "cebuano": [
       "lisod kaayo og ginhawa",
@@ -24,8 +38,6 @@
     ],
     "english": [
       "chest pain",
-      "suicidal",
-      "overdose",
       "fainted"
     ]
   }

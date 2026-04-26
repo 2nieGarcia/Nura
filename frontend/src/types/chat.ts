@@ -20,6 +20,7 @@ export type ChatMessage = {
 export type ChatRequest = {
   session_id: string;
   message: string;
+  concern?: string;
   language?: string;
   location_city?: string;
   benefits?: string[];

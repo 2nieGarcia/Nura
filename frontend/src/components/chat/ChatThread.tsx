@@ -19,7 +19,7 @@ export function ChatThread({ children, messages = [] }: ChatThreadProps): JSX.El
     <section
       ref={threadRef}
       aria-label="Nura conversation"
-      className="flex flex-1 flex-col gap-4 overflow-y-auto px-5 pb-28 pt-4"
+      className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-3 pb-3 pt-3 sm:px-5"
     >
       {children}
     </section>

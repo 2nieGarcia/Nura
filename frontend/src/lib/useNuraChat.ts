@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  APP_COPY,
   BENEFIT_OPTIONS,
   CONCERN_CHIPS,
   DEFAULT_BENEFITS,
@@ -12,13 +13,18 @@ import { createSession, ensureSessionId, submitChatTurn } from "./api";
 import type { ChatResponse } from "../types/chat";
 import { getFacilityCoordinates } from "./maps";
 import {
+  appendFeedbackLog,
   cacheResults,
   clearCarePass,
+  clearConversation,
   getCarePass,
+  getConversation,
   getStoredLanguage,
+  saveConversation,
   saveCarePass,
   saveStoredLanguage,
   type CarePass,
+  type FeedbackRating,
 } from "./storage";
 
 export type ChatStep =
@@ -67,6 +73,7 @@ export type ChatMessage =
       location: string;
       facilities: Facility[];
       reply: string;
+      benefitsSummary: string;
       error: string | null;
       timestamp: number;
     }
@@ -74,6 +81,14 @@ export type ChatMessage =
       id: string;
       type: "care-pass";
       pass: CarePass;
+      timestamp: number;
+    }
+  | {
+      id: string;
+      type: "feedback";
+      concern: string;
+      location: string;
+      rating: FeedbackRating | null;
       timestamp: number;
     };
 
@@ -91,6 +106,7 @@ export type NuraChatState = {
   isEmergency: boolean;
   language: LanguageCode;
   carePass: CarePass | null;
+  restoredFromStorage: boolean;
 };
 
 export type NuraChatActions = {
@@ -105,6 +121,7 @@ export type NuraChatActions = {
   clearSavedCarePass: () => void;
   dismissEmergency: () => void;
   reset: () => void;
+  rateFeedback: (messageId: string, rating: FeedbackRating) => void;
 };
 
 const LOCATION_USE_CURRENT = "Gamitin location ko";
@@ -117,6 +134,14 @@ const FOLLOW_UP_CHIPS: readonly string[] = [
   "Ibang location",
   "Ibang concern",
 ];
+const FOLLOW_UP_FREE_TEXT_CHIPS: readonly string[] = [
+  "Mag-search ulit",
+  "Ibang concern",
+];
+const INTRO_COPY =
+  "Kumusta! Ako si Nura. Hindi ako doktor, pero tutulungan kitang malaman kung saan ka pwedeng magpatingin, anong benefit ang pwede mong gamitin, at ano ang sasabihin mo sa front desk.";
+const CONNECTION_ERROR_COPY =
+  "Hindi makakonekta sa Nura ngayon. Kung urgent o lumalala ang sintomas, pumunta agad sa pinakamalapit na ER o tumawag sa local emergency hotline.";
 
 let idCounter = 0;
 
@@ -179,6 +204,7 @@ function resultsMessage(params: {
   location: string;
   facilities: Facility[];
   reply: string;
+  benefitsSummary: string;
   error: string | null;
 }): ChatMessage {
   return {
@@ -188,6 +214,7 @@ function resultsMessage(params: {
     location: params.location,
     facilities: params.facilities,
     reply: params.reply,
+    benefitsSummary: params.benefitsSummary,
     error: params.error,
     timestamp: now(),
   };
@@ -202,14 +229,51 @@ function carePassMessage(pass: CarePass): ChatMessage {
   };
 }
 
-function createInitialState(): NuraChatState {
+function feedbackMessage(concern: string, location: string): ChatMessage {
+  return {
+    id: createId("feedback"),
+    type: "feedback",
+    concern,
+    location,
+    rating: null,
+    timestamp: now(),
+  };
+}
+
+function connectionFallbackMessages(
+  nextQuestion: ChatMessage,
+  includeSavedPass = true
+): ChatMessage[] {
+  const pass = includeSavedPass ? getCarePass() : null;
+
+  return [
+    botText(CONNECTION_ERROR_COPY),
+    ...(pass ? [carePassMessage(pass)] : []),
+    nextQuestion,
+  ];
+}
+
+function latestResultsMessage(
+  messages: readonly ChatMessage[]
+): Extract<ChatMessage, { type: "results" }> | null {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message?.type === "results") return message;
+  }
+
+  return null;
+}
+
+function createFreshInitialState(includeFullIntro: boolean): NuraChatState {
   return {
     step: "asking_concern",
-    messages: [
-      botText(
-        "Kumusta! Ako si Nura. Hindi ako doktor, pero tutulungan kitang malaman kung saan ka pwedeng magpatingin, anong benefit ang pwede mong gamitin, at ano ang sasabihin mo sa front desk."
-      ),
-    ],
+    messages: includeFullIntro
+      ? [
+          botText(INTRO_COPY),
+          botText(APP_COPY.privacyNote),
+          botQuestion("Ano ang concern o sintomas mo ngayon?", CONCERN_CHIPS),
+        ]
+      : [botText(INTRO_COPY)],
     currentInput: "",
     concern: "",
     location: "",
@@ -221,6 +285,38 @@ function createInitialState(): NuraChatState {
     isEmergency: false,
     language: getStoredLanguage(),
     carePass: getCarePass(),
+    restoredFromStorage: false,
+  };
+}
+
+function createInitialState(): NuraChatState {
+  const saved = getConversation();
+  if (!saved) return createFreshInitialState(false);
+
+  const messages = saved.messages.filter((message) => message.type !== "typing");
+  const latestResults = latestResultsMessage(messages);
+  const restoredStep: ChatStep =
+    saved.step === "loading"
+      ? latestResults
+        ? "follow_up"
+        : "asking_concern"
+      : saved.step;
+
+  return {
+    step: restoredStep,
+    messages,
+    currentInput: "",
+    concern: saved.concern,
+    location: saved.location,
+    benefits: { ...DEFAULT_BENEFITS },
+    facilities: latestResults?.facilities ?? [],
+    reply: latestResults?.reply ?? "",
+    error: latestResults?.error ?? null,
+    isLoading: false,
+    isEmergency: false,
+    language: getStoredLanguage(),
+    carePass: getCarePass(),
+    restoredFromStorage: true,
   };
 }
 
@@ -289,6 +385,58 @@ function wait(ms: number): Promise<void> {
   });
 }
 
+type NominatimReverseResponse = {
+  address?: {
+    city?: string;
+    town?: string;
+    municipality?: string;
+  };
+};
+
+function getBrowserPosition(): Promise<GeolocationPosition> {
+  return new Promise((resolve, reject) => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      reject(new Error("Geolocation is not supported."));
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(resolve, reject, {
+      timeout: 10000,
+    });
+  });
+}
+
+async function reverseGeocodeCity(lat: number, lng: number): Promise<string> {
+  const params = new URLSearchParams({
+    lat: String(lat),
+    lon: String(lng),
+    format: "json",
+  });
+  const response = await fetch(
+    `https://nominatim.openstreetmap.org/reverse?${params.toString()}`,
+    {
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "Nura healthcare access navigator",
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error("Reverse geocoding failed.");
+  }
+
+  const data = (await response.json()) as NominatimReverseResponse;
+  const city =
+    data.address?.city ?? data.address?.town ?? data.address?.municipality ?? "";
+
+  if (!city.trim()) {
+    throw new Error("No city found.");
+  }
+
+  return city.trim();
+}
+
 function hasMissingField(response: ChatResponse, field: "location_city" | "benefits"): boolean {
   return response.missing_fields?.includes(field) ?? false;
 }
@@ -331,6 +479,21 @@ export function useNuraChat(): [NuraChatState, NuraChatActions] {
   }, [state]);
 
   useEffect(() => {
+    if (state.isLoading || state.step === "loading") return undefined;
+
+    const timerId = window.setTimeout(() => {
+      saveConversation(
+        state.messages.filter((message) => message.type !== "typing"),
+        state.step,
+        state.concern,
+        state.location
+      );
+    }, 500);
+
+    return () => window.clearTimeout(timerId);
+  }, [state.messages, state.step, state.concern, state.location, state.isLoading]);
+
+  useEffect(() => {
     let isCancelled = false;
 
     void ensureSessionId(undefined, stateRef.current.language)
@@ -354,13 +517,15 @@ export function useNuraChat(): [NuraChatState, NuraChatActions] {
   }, []);
 
   useEffect(() => {
+    if (stateRef.current.restoredFromStorage) return undefined;
+
     // Staggered second and third initial messages
     const timer1 = setTimeout(() => {
       setState((current) => ({
         ...current,
         messages: [
           ...current.messages,
-          botText("Walang account. Walang sine-save."),
+          botText(APP_COPY.privacyNote),
         ],
       }));
     }, 500);
@@ -489,8 +654,10 @@ export function useNuraChat(): [NuraChatState, NuraChatActions] {
             location: resolvedLocation,
             facilities: response.facilities,
             reply: response.reply,
+            benefitsSummary: summarizeBenefits(responseBenefits),
             error: null,
           }),
+          feedbackMessage(concern, resolvedLocation),
           botQuestion("Ano ang gusto mong gawin?", FOLLOW_UP_CHIPS),
         ],
       }));
@@ -499,30 +666,16 @@ export function useNuraChat(): [NuraChatState, NuraChatActions] {
         ...current,
         step: "asking_concern",
         isLoading: false,
-        error: "May problema sa connection. Subukan ulit mamaya.",
+        carePass: getCarePass(),
+        error: CONNECTION_ERROR_COPY,
         messages: [
           ...current.messages.filter((message) => message.id !== typingId),
-          botText("May problema sa connection. Subukan ulit mamaya."),
-          botQuestion("Ano ang concern o sintomas mo ngayon?", CONCERN_CHIPS),
+          ...connectionFallbackMessages(
+            botQuestion("Ano ang concern o sintomas mo ngayon?", CONCERN_CHIPS)
+          ),
         ],
       }));
     }
-  }, []);
-
-  const askForTypedLocation = useCallback(() => {
-    setState((current) => ({
-      ...current,
-      step: "asking_location",
-      currentInput: "",
-      messages: [
-        ...current.messages,
-        userText(LOCATION_USE_CURRENT),
-        botQuestion(
-          "Hindi ko pa ma-access ang live location dito. I-type ang city o barangay, o pumili sa listahan.",
-          LOCATION_CHIPS
-        ),
-      ],
-    }));
   }, []);
 
   const submitLocationValue = useCallback(async (value: string) => {
@@ -546,6 +699,7 @@ export function useNuraChat(): [NuraChatState, NuraChatActions] {
     try {
       const response = await submitChatTurn(apiSessionIdRef.current, {
         message: location,
+        concern: stateRef.current.concern,
         location,
         language,
         intent: "HOSPITAL",
@@ -623,8 +777,10 @@ export function useNuraChat(): [NuraChatState, NuraChatActions] {
             location: resolvedLocation,
             facilities: response.facilities,
             reply: response.reply,
+            benefitsSummary: summarizeBenefits(responseBenefits),
             error: null,
           }),
+          feedbackMessage(current.concern || "iyong concern", resolvedLocation),
           botQuestion("Ano ang gusto mong gawin?", FOLLOW_UP_CHIPS),
         ],
       }));
@@ -633,41 +789,168 @@ export function useNuraChat(): [NuraChatState, NuraChatActions] {
         ...current,
         step: "asking_location",
         isLoading: false,
-        error: "May problema sa connection. Subukan ulit mamaya.",
+        carePass: getCarePass(),
+        error: CONNECTION_ERROR_COPY,
         messages: [
           ...current.messages.filter((message) => message.id !== typingId),
-          botText("May problema sa connection. Subukan ulit mamaya."),
-          botQuestion(
-            "Pakitype ulit ang city o barangay mo para matuloy ang rekomendasyon.",
-            LOCATION_QUICK_REPLIES
+          ...connectionFallbackMessages(
+            botQuestion(
+              "Pakitype ulit ang city o barangay mo para matuloy ang rekomendasyon.",
+              LOCATION_QUICK_REPLIES
+            )
           ),
         ],
       }));
     }
   }, []);
 
-  const sendInput = useCallback(() => {
+  const askForTypedLocation = useCallback(async () => {
+    const typingMessage = typing("Kinukuha ang location mo...");
+    const typingId = typingMessage.id;
+
+    setState((current) => ({
+      ...current,
+      step: "loading",
+      currentInput: "",
+      isLoading: true,
+      error: null,
+      messages: [...current.messages, userText(LOCATION_USE_CURRENT), typingMessage],
+    }));
+
+    try {
+      const position = await getBrowserPosition();
+      const city = await reverseGeocodeCity(
+        position.coords.latitude,
+        position.coords.longitude
+      );
+
+      setState((current) => ({
+        ...current,
+        isLoading: false,
+        messages: current.messages.filter((message) => message.id !== typingId),
+      }));
+
+      await submitLocationValue(city);
+    } catch {
+      setState((current) => ({
+        ...current,
+        step: "asking_location",
+        currentInput: "",
+        isLoading: false,
+        error: null,
+        messages: [
+          ...current.messages.filter((message) => message.id !== typingId),
+          botText("Hindi ko nakuha ang location mo. I-type ang city o barangay mo."),
+          botQuestion("Pumili sa listahan o i-type ang city o barangay mo.", LOCATION_CHIPS),
+        ],
+      }));
+    }
+  }, [submitLocationValue]);
+
+  const submitFollowUpValue = useCallback(async (value: string) => {
+    const followUp = value.trim();
+    if (!followUp) return;
     const snapshot = stateRef.current;
-    const value = snapshot.currentInput.trim();
+    const language = snapshot.language;
+    const typingMessage = typing("Tinitingnan ko ang sagot batay sa usapan natin...");
+    const typingId = typingMessage.id;
 
-    if (!value || snapshot.isLoading || snapshot.step === "asking_benefits") {
-      return;
-    }
+    setState((current) => ({
+      ...current,
+      step: "loading",
+      currentInput: "",
+      isLoading: true,
+      error: null,
+      messages: [...current.messages, userText(followUp), typingMessage],
+    }));
 
-    if (snapshot.step === "asking_concern") {
-      void submitConcernValue(value);
-      return;
-    }
+    try {
+      const response = await submitChatTurn(apiSessionIdRef.current, {
+        message: followUp,
+        concern: snapshot.concern,
+        language,
+      });
 
-    if (snapshot.step === "asking_location") {
-      void submitLocationValue(value);
-      return;
-    }
+      apiSessionIdRef.current = response.session_id;
 
-    if (snapshot.step === "follow_up" || snapshot.step === "results") {
-      void submitConcernValue(value);
+      if (response.response_type === "EMERGENCY" || response.is_emergency) {
+        setState((current) => ({
+          ...current,
+          isLoading: false,
+          isEmergency: true,
+          messages: current.messages.filter((message) => message.id !== typingId),
+        }));
+        return;
+      }
+
+      const resolvedLocation =
+        response.session?.location_city?.trim() || snapshot.location || "lugar mo";
+      const responseBenefits = response.session?.benefits
+        ? toBenefitProfile(response.session.benefits)
+        : snapshot.benefits;
+      const nextMessages: ChatMessage[] = [
+        botText(response.reply),
+      ];
+
+      let savedPass: CarePass | null = null;
+      if (response.facilities.length > 0) {
+        savedPass = saveLatestCarePass({
+          concern: snapshot.concern || followUp,
+          location: resolvedLocation,
+          benefits: responseBenefits,
+          facilities: response.facilities,
+          reply: response.reply,
+        });
+        cacheResults(response.facilities, response.reply);
+        nextMessages.push(
+          resultsMessage({
+            concern: snapshot.concern || followUp,
+            location: resolvedLocation,
+            facilities: response.facilities,
+            reply: response.reply,
+            benefitsSummary: summarizeBenefits(responseBenefits),
+            error: null,
+          }),
+          feedbackMessage(snapshot.concern || followUp, resolvedLocation)
+        );
+      }
+
+      nextMessages.push(
+        botQuestion("Ano pa ang gusto mong gawin?", FOLLOW_UP_FREE_TEXT_CHIPS)
+      );
+
+      setState((current) => ({
+        ...current,
+        step: "follow_up",
+        location: resolvedLocation,
+        benefits: responseBenefits,
+        facilities:
+          response.facilities.length > 0 ? response.facilities : current.facilities,
+        reply: response.reply,
+        error: null,
+        isLoading: false,
+        carePass: savedPass ?? current.carePass,
+        messages: [
+          ...current.messages.filter((message) => message.id !== typingId),
+          ...nextMessages,
+        ],
+      }));
+    } catch {
+      setState((current) => ({
+        ...current,
+        step: "follow_up",
+        isLoading: false,
+        carePass: getCarePass(),
+        error: CONNECTION_ERROR_COPY,
+        messages: [
+          ...current.messages.filter((message) => message.id !== typingId),
+          ...connectionFallbackMessages(
+            botQuestion("Ano pa ang gusto mong gawin?", FOLLOW_UP_FREE_TEXT_CHIPS)
+          ),
+        ],
+      }));
     }
-  }, [submitConcernValue, submitLocationValue]);
+  }, []);
 
   const chooseQuickReply = useCallback(
     (value: string) => {
@@ -682,7 +965,7 @@ export function useNuraChat(): [NuraChatState, NuraChatActions] {
 
       if (snapshot.step === "asking_location") {
         if (value === LOCATION_USE_CURRENT) {
-          askForTypedLocation();
+          void askForTypedLocation();
           return;
         }
 
@@ -737,6 +1020,34 @@ export function useNuraChat(): [NuraChatState, NuraChatActions] {
     },
     [askForTypedLocation, submitConcernValue, submitLocationValue]
   );
+
+  const sendInput = useCallback(() => {
+    const snapshot = stateRef.current;
+    const value = snapshot.currentInput.trim();
+
+    if (!value || snapshot.isLoading || snapshot.step === "asking_benefits") {
+      return;
+    }
+
+    if (snapshot.step === "asking_concern") {
+      void submitConcernValue(value);
+      return;
+    }
+
+    if (snapshot.step === "asking_location") {
+      void submitLocationValue(value);
+      return;
+    }
+
+    if (snapshot.step === "follow_up" || snapshot.step === "results") {
+      if (FOLLOW_UP_CHIPS.includes(value)) {
+        chooseQuickReply(value);
+        return;
+      }
+
+      void submitFollowUpValue(value);
+    }
+  }, [chooseQuickReply, submitConcernValue, submitFollowUpValue, submitLocationValue]);
 
   const toggleBenefit = useCallback((key: keyof BenefitProfile) => {
     setState((current) => {
@@ -796,6 +1107,7 @@ export function useNuraChat(): [NuraChatState, NuraChatActions] {
     try {
       const response = await submitChatTurn(apiSessionIdRef.current, {
         message: concern,
+        concern,
         location,
         benefits: selectedBenefits,
         language,
@@ -863,13 +1175,15 @@ export function useNuraChat(): [NuraChatState, NuraChatActions] {
             location: resolvedLocation,
             facilities: response.facilities,
             reply: response.reply,
+            benefitsSummary: summarizeBenefits(selectedBenefits),
             error: null,
           }),
+          feedbackMessage(concern, resolvedLocation),
           botQuestion("Ano ang gusto mong gawin?", FOLLOW_UP_CHIPS),
         ],
       }));
     } catch {
-      const error = "May problema sa connection. Subukan ulit mamaya.";
+      const error = CONNECTION_ERROR_COPY;
 
       setState((current) => ({
         ...current,
@@ -878,9 +1192,10 @@ export function useNuraChat(): [NuraChatState, NuraChatActions] {
         reply: "",
         error,
         isLoading: false,
+        carePass: getCarePass(),
         messages: [
           ...current.messages.filter((message) => message.id !== typingId),
-          botText(error),
+          ...connectionFallbackMessages(botText("Piliin ulit ang benefit para masubukan natin muli.")),
           benefitPicker(),
         ],
       }));
@@ -894,7 +1209,10 @@ export function useNuraChat(): [NuraChatState, NuraChatActions] {
       setState((current) => ({
         ...current,
         carePass: null,
-        messages: current.messages.filter((message) => message.type !== "care-pass"),
+        messages: [
+          ...current.messages.filter((message) => message.type !== "care-pass"),
+          botText("Walang naka-save na Last Care Pass sa device na ito."),
+        ],
       }));
       return;
     }
@@ -940,8 +1258,34 @@ export function useNuraChat(): [NuraChatState, NuraChatActions] {
   }, []);
 
   const reset = useCallback(() => {
-    setState(createInitialState());
+    clearConversation();
+    setState(createFreshInitialState(true));
   }, []);
+
+  const rateFeedback = useCallback(
+    (messageId: string, rating: FeedbackRating) => {
+      setState((current) => {
+        const feedback = current.messages.find(
+          (message): message is Extract<ChatMessage, { type: "feedback" }> =>
+            message.type === "feedback" && message.id === messageId
+        );
+
+        if (!feedback || feedback.rating !== null) return current;
+
+        appendFeedbackLog(rating, feedback.concern, feedback.location);
+
+        return {
+          ...current,
+          messages: current.messages.map((message) =>
+            message.type === "feedback" && message.id === messageId
+              ? { ...message, rating }
+              : message
+          ),
+        };
+      });
+    },
+    []
+  );
 
   const actions: NuraChatActions = {
     setInput,
@@ -955,6 +1299,7 @@ export function useNuraChat(): [NuraChatState, NuraChatActions] {
     clearSavedCarePass,
     dismissEmergency,
     reset,
+    rateFeedback,
   };
 
   return [state, actions];

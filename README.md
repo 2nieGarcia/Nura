@@ -26,7 +26,7 @@ Backend (FastAPI, /api/v1)
         |
         +-- hospital service
                +-- Supabase health_facilities search
-               +-- exact city, fuzzy city, region fallback
+               +-- exact city, fuzzy city, region fallback from real rows
                +-- frontend-compatible facility normalization
 ```
 
@@ -167,6 +167,7 @@ Request:
 {
   "session_id": "550e8400-e29b-41d4-a716-446655440000",
   "message": "Masakit ulo ko. Saan ako pwede pumunta?",
+  "concern": "Masakit ulo ko",
   "language": "fil",
   "location_city": "Quezon City",
   "benefits": ["PhilHealth"],
@@ -174,7 +175,7 @@ Request:
 }
 ```
 
-`language`, `location_city`, `benefits`, and `intent` are optional. The frontend currently sends `intent: "HOSPITAL"` for facility navigation.
+`concern`, `language`, `location_city`, `benefits`, and `intent` are optional. The frontend sends `concern` when the latest user turn is a location, benefit, or follow-up answer so backend recommendations still use the original symptom/concern.
 
 Response:
 
@@ -186,8 +187,8 @@ Response:
   "data": {
     "facilities": [
       {
-        "name": "Quezon City General Hospital",
-        "address": "Quezon City public hospital district",
+        "name": "<name_of_health_facility from health_facilities>",
+        "address": "<street and municipality_city from health_facilities>",
         "accreditation": "PhilHealth Accredited",
         "benefit_to_claim": "Ask the PhilHealth desk to verify coverage and requirements.",
         "what_to_say": "Magpapa-assess po ako...",
@@ -199,8 +200,8 @@ Response:
     ],
     "hospitals": [
       {
-        "name": "Quezon City General Hospital",
-        "address": "Quezon City public hospital district",
+        "name": "<name_of_health_facility from health_facilities>",
+        "address": "<street and municipality_city from health_facilities>",
         "data_source": "YAKAP"
       }
     ]
@@ -217,7 +218,7 @@ Response types:
 |---|---|
 | `EMERGENCY` | Emergency keyword matched. No LLM, RAG, session lookup, or facility search runs. |
 | `FOLLOW_UP` | Session is missing city or benefits. |
-| `RECOMMENDATION` | Facility search path completed or returned fallback facilities. |
+| `RECOMMENDATION` | Facility search path completed. If no verified facility is found, the response is explicit and `data.facilities` is empty. |
 | `RAG_ANSWER` | Benefit guide RAG path completed or returned fallback guidance. |
 
 ## Orchestration Rules
@@ -284,7 +285,7 @@ Facility search performs:
 4. Fuzzy city match.
 5. Region or candidate fallback.
 
-If Supabase is unavailable or no candidates can be fetched, the service returns local fallback facilities in the same frontend-compatible shape.
+If Supabase is unavailable or no candidates can be fetched, the service does not fabricate facility names. It returns an explicit no-verified-facility message and an empty `data.facilities` array.
 
 ## Frontend Setup
 
@@ -317,7 +318,7 @@ http://127.0.0.1:5173
 5. Select `PhilHealth`.
 6. Submit benefits.
 
-Expected result: `POST /api/v1/chat` returns `RECOMMENDATION`, a disclaimer-bearing message, and facilities under `data.facilities` and `data.hospitals`.
+Expected result with populated facility data: `POST /api/v1/chat` returns `RECOMMENDATION`, a disclaimer-bearing message, and facilities under `data.facilities` and `data.hospitals`. If the facility table is empty or unavailable, the same endpoint returns `RECOMMENDATION` with a no-verified-facility message and empty facility arrays.
 
 ## Verification Commands
 

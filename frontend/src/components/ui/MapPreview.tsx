@@ -41,6 +41,10 @@ export function MapPreview({
 
     return (
       <iframe
+        id={`care-pass-map-${name
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-|-$/g, "")}`}
         title={`Map: ${name}`}
         src={src}
         width="100%"
@@ -58,6 +62,10 @@ export function MapPreview({
 
     return (
       <iframe
+        id={`care-pass-map-${name
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-|-$/g, "")}`}
         title={`Map: ${name}`}
         src={src}
         width="100%"
@@ -74,6 +82,10 @@ export function MapPreview({
 
     return (
       <iframe
+        id={`care-pass-map-${name
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-|-$/g, "")}`}
         title={`Map search: ${name}`}
         src={src}
         width="100%"

@@ -23,7 +23,7 @@ export function BenefitPickerCard({
   const isDisabled = disabled || isLoading;
 
   return (
-    <div className="message-enter rounded-block border border-paper-edge bg-card px-4 py-4 shadow-sm">
+    <div className="message-enter w-full max-w-[30rem] rounded-form border border-paper-edge bg-card px-4 py-4 shadow-sm">
       <fieldset disabled={isDisabled}>
         <legend className="font-mono text-label uppercase text-seal">
           Benefit
@@ -32,7 +32,7 @@ export function BenefitPickerCard({
           Piliin lahat ng applicable. Okay lang kung wala o hindi sure.
         </p>
 
-        <div className="mt-4 divide-y divide-paper-edge border-y border-paper-edge">
+        <div className="mt-4 divide-y divide-paper-edge rounded-form border border-paper-edge px-3">
           {real.map((option) => (
             <BenefitRow
               key={option.key}
@@ -49,7 +49,7 @@ export function BenefitPickerCard({
             <p className="font-mono text-label uppercase text-ink-soft">
               O kung wala
             </p>
-            <div className="mt-2 border-y border-paper-edge">
+            <div className="mt-2 rounded-form border border-paper-edge px-3">
               <BenefitRow
                 option={none}
                 selected={benefits[none.key]}
@@ -70,10 +70,11 @@ export function BenefitPickerCard({
       </fieldset>
 
       <button
+        id="benefit-submit-button"
         type="button"
         onClick={onSubmit}
         disabled={!hasSelection || isDisabled}
-        className="mt-5 inline-flex min-h-[52px] w-full items-center justify-center rounded-form bg-seal px-5 text-body font-semibold text-card transition-colors hover:bg-seal-press active:bg-seal-press disabled:cursor-not-allowed disabled:bg-paper-edge disabled:text-ink-mute"
+        className="mt-5 inline-flex min-h-[48px] w-full items-center justify-center rounded-form bg-seal px-5 text-body font-semibold text-card transition-colors hover:bg-seal-press active:bg-seal-press disabled:cursor-not-allowed disabled:bg-paper-edge disabled:text-ink-mute"
       >
         {isLoading ? "Hinahanap..." : APP_COPY.benefitSubmit}
       </button>

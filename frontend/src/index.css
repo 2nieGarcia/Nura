@@ -10,18 +10,89 @@
    ────────────────────────────────────────────────────────────────────────── */
 
 :root {
+  --seal-navy: #0E2A3F;
+  --paper-base: #F4F7F5;
+  --bg-primary: var(--paper-base);
+  --bg-card: #FFFFFF;
+  --paper-edge: #D8E1DD;
+  --ink: #16211F;
+  --ink-soft: #4E5C58;
+  --ink-mute: #72807B;
+  --seal: var(--seal-navy);
+  --seal-press: #08192B;
+  --pin: #2BA9A7;
+  --pin-press: #1F8987;
+  --pin-soft: #E3F4F2;
+  --stamp: #B91C1C;
+  --stamp-press: #7F1313;
+  --stamp-bg: #FEE9E7;
+  --mark: #A15C00;
+  --mark-bg: #FFF6E6;
+  --focus: #2BA9A7;
+  --color-bg-primary: 244 247 245;
+  --color-bg-card: 255 255 255;
+  --color-paper-edge: 216 225 221;
+  --color-ink: 22 33 31;
+  --color-ink-soft: 78 92 88;
+  --color-ink-mute: 114 128 123;
+  --color-seal: 14 42 63;
+  --color-seal-press: 8 25 43;
+  --color-pin: 43 169 167;
+  --color-pin-press: 31 137 135;
+  --color-pin-soft: 227 244 242;
+  --color-stamp: 185 28 28;
+  --color-stamp-press: 127 19 19;
+  --color-stamp-bg: 254 233 231;
+  --color-mark: 161 92 0;
+  --color-mark-bg: 255 246 230;
   font-family: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
   font-feature-settings: "ss01", "cv02";
   /* Plex Sans clarity tweaks */
   line-height: 1.5;
   font-weight: 400;
-  color: #111815;
-  /* ink */
-  background-color: #F4EFE6;
-  /* paper */
+  color: var(--ink);
+  background-color: var(--bg-primary);
+  color-scheme: light;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+}
+
+:root[data-theme="dark"] {
+  --bg-primary: #0F1716;
+  --bg-card: #172321;
+  --paper-edge: #2C3C39;
+  --ink: #EEF6F3;
+  --ink-soft: #B8C7C2;
+  --ink-mute: #8EA09A;
+  --seal: #8FDCE3;
+  --seal-press: #B8ECF0;
+  --pin: #5DD6D2;
+  --pin-press: #83E1DE;
+  --pin-soft: #153735;
+  --stamp: #FF8A80;
+  --stamp-press: #FFB0A8;
+  --stamp-bg: #34191B;
+  --mark: #F0BC72;
+  --mark-bg: #302414;
+  --focus: #5DD6D2;
+  --color-bg-primary: 15 23 22;
+  --color-bg-card: 23 35 33;
+  --color-paper-edge: 44 60 57;
+  --color-ink: 238 246 243;
+  --color-ink-soft: 184 199 194;
+  --color-ink-mute: 142 160 154;
+  --color-seal: 143 220 227;
+  --color-seal-press: 184 236 240;
+  --color-pin: 93 214 210;
+  --color-pin-press: 131 225 222;
+  --color-pin-soft: 21 55 53;
+  --color-stamp: 255 138 128;
+  --color-stamp-press: 255 176 168;
+  --color-stamp-bg: 52 25 27;
+  --color-mark: 240 188 114;
+  --color-mark-bg: 48 36 20;
+  color-scheme: dark;
 }
 
 * {
@@ -33,11 +104,16 @@
 html,
 body,
 #root {
+  height: 100%;
   min-height: 100dvh;
 }
 
 body {
+  background: var(--bg-primary);
+  color: var(--ink);
   overflow-x: hidden;
+  overscroll-behavior: none;
+  min-height: 100dvh;
 }
 
 /* Inherit form controls so Tailwind classes apply uniformly */
@@ -49,6 +125,13 @@ select {
   color: inherit;
 }
 
+button,
+a,
+select,
+input {
+  -webkit-tap-highlight-color: transparent;
+}
+
 /* Headings use Fraunces with optical sizing and tight tracking.
    The `opsz` axis ensures the serif looks correct at large sizes. */
 h1,
@@ -58,13 +141,12 @@ h3 {
   font-variation-settings: "opsz" 30;
   font-weight: 600;
   letter-spacing: 0;
-  color: #111815;
+  color: var(--ink);
 }
 
 /* ── Visible focus ring (a11y) ──────────────────────────────────────────── */
 :focus-visible {
-  outline: 3px solid #0F5132;
-  /* seal */
+  outline: 3px solid var(--focus);
   outline-offset: 2px;
   border-radius: 4px;
 }
@@ -90,8 +172,7 @@ h3 {
 .progress-rail {
   position: relative;
   overflow: hidden;
-  background: #E6DFCF;
-  /* paper-edge */
+  background: var(--paper-edge);
   height: 3px;
   border-radius: 2px;
 }
@@ -101,8 +182,7 @@ h3 {
   position: absolute;
   inset: 0;
   width: 40%;
-  background: #0F5132;
-  /* seal */
+  background: var(--seal);
   animation: progressSlide 1.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
@@ -148,7 +228,7 @@ h3 {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #E6DFCF;
+  background: var(--paper-edge);
   border-radius: 2px;
 }
 

@@ -1,4 +1,5 @@
 import type { Facility } from "../../types/facility";
+import { getDepartmentHint } from "../../constants/departments";
 import { getDirectionsUrl, getFacilityCoordinates } from "../../lib/maps";
 import { MapPreview } from "./MapPreview";
 
@@ -45,6 +46,13 @@ function copyAddress(text: string): void {
   }
 }
 
+function facilityDomId(facility: Facility): string {
+  return (facility.id ?? facility.name)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
 // ── Primary recommendation (Zone 1) ───────────────────────────────────────
 export function PrimaryRecommendation({
   facility,
@@ -53,25 +61,42 @@ export function PrimaryRecommendation({
   facility: Facility;
   concern: string;
 }): JSX.Element {
+  const domId = facilityDomId(facility) || "facility";
   const coords = getFacilityCoordinates(facility);
   const directionsUrl = getDirectionsUrl(coords, facility.maps_url);
+  const departmentHint = getDepartmentHint(concern);
   const distance = typeof facility.distance_km === "number"
     ? `${facility.distance_km.toFixed(1)} km`
     : null;
 
   return (
-    <article className="rounded-block border-hair border-paper-edge bg-card">
+    <article className="overflow-hidden rounded-form border border-paper-edge bg-card shadow-sm">
       {/* Stamp-style label — does the work the old "Recommended" header used to. */}
-      <div className="flex items-center gap-2 border-b border-paper-edge px-5 py-2">
+      <div className="flex items-center gap-2 border-b border-paper-edge bg-paper/55 px-4 py-2">
         <span className="inline-block h-2 w-2 rounded-stamp bg-seal" aria-hidden="true" />
         <span className="font-mono text-label uppercase text-seal">
           Unang rekomenda
         </span>
       </div>
 
-      <div className="px-5 py-4">
-        <h2 className="font-display text-title text-ink">{facility.name}</h2>
+      <div className="px-4 py-4">
+        <h2 className="font-display text-[1.22rem] leading-7 text-ink">
+          {facility.name}
+        </h2>
+        {departmentHint && (
+          <p className="mt-2 rounded-form border border-pin/25 bg-pin-soft px-3 py-2 text-meta font-semibold text-seal">
+            📋 Pumunta sa: {departmentHint} (i-confirm sa Information Desk)
+          </p>
+        )}
         <p className="mt-1 text-body text-ink-soft">{facility.address}</p>
+
+        <MapPreview
+          lat={coords?.lat}
+          lng={coords?.lng}
+          name={facility.name}
+          address={facility.address}
+          mapsUrl={facility.maps_url}
+        />
 
         {/* Tabular meta on its own row. Mono = "data, not prose". */}
         {(distance || facility.hours) && (
@@ -82,19 +107,10 @@ export function PrimaryRecommendation({
           </p>
         )}
 
-        {/* Live map preview. Uses coordinates when present, otherwise searches by facility name/address. */}
-        <MapPreview
-          lat={coords?.lat}
-          lng={coords?.lng}
-          name={facility.name}
-          address={facility.address}
-          mapsUrl={facility.maps_url}
-        />
-
         {/* One-sentence reason this is the answer. Concern echoed back so the
             user knows the system actually heard them. */}
         {facility.benefit_to_claim && (
-          <p className="mt-4 border-l-rule border-seal pl-3 text-body-lg text-ink">
+          <p className="mt-4 rounded-form border border-paper-edge bg-paper/60 px-3 py-3 text-body text-ink">
             Pumunta dito para sa <span className="font-semibold">{concern || "iyong concern"}</span>.{" "}
             <span className="text-ink-soft">{facility.benefit_to_claim}</span>
           </p>
@@ -102,9 +118,9 @@ export function PrimaryRecommendation({
 
         {/* Two-up instructional zone. Labels do the work emoji used to do. */}
         {(facility.what_to_bring || facility.what_to_say) && (
-          <div className="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-2">
+          <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
             {facility.what_to_bring && (
-              <div>
+              <div className="rounded-form border border-paper-edge bg-paper/45 px-3 py-3">
                 <p className="font-mono text-label uppercase text-ink-soft">
                   Dalhin mo
                 </p>
@@ -112,11 +128,11 @@ export function PrimaryRecommendation({
               </div>
             )}
             {facility.what_to_say && (
-              <div>
+              <div className="rounded-form border border-paper-edge bg-paper/45 px-3 py-3">
                 <p className="font-mono text-label uppercase text-ink-soft">
                   Sasabihin mo sa front desk
                 </p>
-                <blockquote className="mt-1 font-display text-body-lg italic text-ink">
+                <blockquote className="mt-1 text-body font-semibold text-ink">
                   {facility.what_to_say}
                 </blockquote>
               </div>
@@ -126,28 +142,30 @@ export function PrimaryRecommendation({
 
         {/* Caution sentence (PhilCare data is older). Left rule, no card. */}
         {facility.data_source === "PHILCARE_2024" && (
-          <p className="mt-4 border-l-rule border-mark bg-mark-bg px-3 py-2 text-meta text-ink">
+          <p className="mt-4 rounded-form border border-mark/40 bg-mark-bg px-3 py-2 text-meta text-ink">
             Paalala: ang PhilCare provider list ay mula 2024. Tumawag muna bago pumunta para
             ma-confirm.
           </p>
         )}
 
         {/* Stacked CTAs. Maps is primary — it's literally the next action. */}
-        <div className="mt-6 flex flex-col gap-2">
+        <div className="mt-5 grid grid-cols-1 gap-2">
           {directionsUrl && (
             <a
+              id={`primary-directions-${domId}`}
               href={directionsUrl}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex min-h-[52px] w-full items-center justify-center rounded-form bg-seal px-5 text-body-lg font-semibold text-card transition-colors hover:bg-seal-press active:bg-seal-press"
+              className="inline-flex min-h-[48px] w-full items-center justify-center rounded-form bg-seal px-5 text-body font-semibold text-card transition-colors hover:bg-seal-press active:bg-seal-press"
             >
-              Directions - Google Maps
+              🧭 Directions
             </a>
           )}
           <button
+            id={`copy-address-${domId}`}
             type="button"
             onClick={() => copyAddress(facility.address)}
-            className="inline-flex min-h-[44px] w-full items-center justify-center rounded-form border-rule border-ink/15 bg-card px-5 text-body font-semibold text-ink transition-colors hover:border-seal hover:text-seal"
+            className="inline-flex min-h-[44px] w-full items-center justify-center rounded-form border border-paper-edge bg-card px-5 text-body font-semibold text-ink transition-colors hover:border-seal hover:bg-pin-soft hover:text-seal"
           >
             Kopyahin ang address
           </button>
@@ -155,7 +173,7 @@ export function PrimaryRecommendation({
       </div>
 
       {/* Source sentence. Replaces the corner badges. */}
-      <p className="border-t border-paper-edge px-5 py-3 text-meta text-ink-soft">
+      <p className="border-t border-paper-edge px-4 py-3 text-meta text-ink-soft">
         {describeSource(facility)} Hindi ito medical advice.
       </p>
     </article>
@@ -170,12 +188,12 @@ export function AlternateRow({ facility }: { facility: Facility }): JSX.Element 
     : "";
 
   return (
-    <li className="flex items-baseline justify-between gap-3 border-b border-paper-edge py-3 last:border-b-0">
+    <li className="flex flex-col gap-2 border-b border-paper-edge py-3 last:border-b-0 sm:flex-row sm:items-baseline sm:justify-between">
       <div className="min-w-0">
         <p className="text-body font-semibold text-ink">{facility.name}</p>
         <p className="mt-0.5 text-meta text-ink-soft">{facility.address}</p>
       </div>
-      <div className="flex flex-shrink-0 items-baseline gap-3">
+      <div className="flex flex-shrink-0 items-center gap-3">
         {distance && (
           <span className="font-mono text-meta text-ink-soft">{distance}</span>
         )}
@@ -184,7 +202,8 @@ export function AlternateRow({ facility }: { facility: Facility }): JSX.Element 
             href={directionsUrl}
             target="_blank"
             rel="noreferrer"
-            className="text-body font-semibold text-seal underline underline-offset-4 hover:text-seal-press"
+            id={`alternate-directions-${facilityDomId(facility) || "facility"}`}
+            className="inline-flex min-h-9 items-center rounded-form border border-paper-edge px-3 text-body font-semibold text-seal transition-colors hover:border-seal hover:bg-pin-soft"
           >
             Tingnan&nbsp;↗
           </a>

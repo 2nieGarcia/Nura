@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 
 from services.interfaces import EmergencyClassifier
@@ -11,7 +12,11 @@ class KeywordEmergencyClassifier(EmergencyClassifier):
 
     def matched_keywords(self, message: str) -> list[str]:
         normalized = message.lower()
-        matches = [keyword for keyword in self.keywords if keyword in normalized]
+        matches = [
+            keyword
+            for keyword in self.keywords
+            if re.search(rf"(?<!\w){re.escape(keyword)}(?!\w)", normalized)
+        ]
         return sorted(set(matches))
 
     def _load_keywords(self) -> list[str]:

@@ -86,6 +86,15 @@ def _normalize(text: str | None) -> str:
     return " ".join((text or "").strip().lower().split())
 
 
+def _language_code(language: str | None) -> str:
+    normalized = (language or "fil").strip().lower()
+    if normalized == "auto":
+        return "fil"
+    if normalized in {"en", "fil", "ceb", "ilo", "hil"}:
+        return normalized
+    return "fil"
+
+
 def _resolve_region(region: str) -> str:
     return REGION_ALIASES.get(_normalize(region), region.strip())
 
@@ -125,15 +134,17 @@ class SupabaseHealthFacilitySearch:
                 benefits=benefits,
                 city_prefilter=None if self.default_region else city,
             )
-            if not candidates and not self.default_region:
-                candidates = self._fetch_candidates(benefits=benefits, city_prefilter=None)
         except ModuleNotFoundError as exc:
             return FacilitySearchResult(source="disabled", error=_safe_error(exc))
         except Exception as exc:
             return FacilitySearchResult(source="error", error=_safe_error(exc))
 
         if not candidates:
-            return FacilitySearchResult(source="supabase", error="no_facility_candidates")
+            return FacilitySearchResult(
+                source="supabase-health-facility-search",
+                match_tier="no_city_candidates",
+                error="no_facility_candidates_for_city",
+            )
 
         city_norm = _normalize(city)
         exact = [
@@ -153,7 +164,12 @@ class SupabaseHealthFacilitySearch:
         if fuzzy:
             return self._result(rows=fuzzy, tier="fuzzy_city", city=city, limit=limit)
 
-        return self._result(rows=candidates, tier="region", city=city, limit=limit)
+        return FacilitySearchResult(
+            source="supabase-health-facility-search",
+            match_tier="no_city_match",
+            total_results=len(candidates),
+            error="no_facility_city_match",
+        )
 
     def _fetch_candidates(
         self,
@@ -317,16 +333,20 @@ class HospitalRecommendationService(HospitalService):
     def recommend(self, session: SessionState, message: str) -> ServiceResult:
         city = session.location_city or "your city"
         search_result = self._search_facilities(city=city, benefits=session.benefits)
-        facilities = search_result.facilities or self._fallback_facilities(session, message)
+        facilities = search_result.facilities
 
         retrieval = self._retrieve_guides(message)
-        composition = self.response_composer.compose_facility_recommendation(
-            session=session,
-            message=message,
-            facilities=facilities,
-            guide_chunks=retrieval.chunks,
+        composition = (
+            self.response_composer.compose_facility_recommendation(
+                session=session,
+                message=message,
+                facilities=facilities,
+                guide_chunks=retrieval.chunks,
+            )
+            if facilities
+            else None
         )
-        if composition.text:
+        if composition and composition.text:
             reply = composition.text
             source = "facility-search-gemini-service"
         else:
@@ -352,8 +372,8 @@ class HospitalRecommendationService(HospitalService):
                     "chunks_returned": len(retrieval.chunks),
                 },
                 "llm": {
-                    "source": composition.source,
-                    "error": composition.error,
+                    "source": composition.source if composition else "skipped",
+                    "error": composition.error if composition else "no_verified_facilities",
                 },
             },
         )
@@ -376,75 +396,152 @@ class HospitalRecommendationService(HospitalService):
     ) -> str:
         city = session.location_city or "your city"
         benefits_label = ", ".join(session.benefits) if session.benefits else "your benefits"
-        names = ", ".join(facility["name"] for facility in facilities[:3])
-        if session.language == "en":
-            return (
-                "Nura is not a doctor and cannot diagnose or prescribe. "
-                f"Here are facilities to contact in {city} for professional assessment "
-                f"and benefit verification for {benefits_label}: {names}."
+        primary = facilities[0] if facilities else None
+        language_code = _language_code(session.language)
+
+        if language_code == "en":
+            if primary:
+                return self._structured_reply(
+                    explanation=(
+                        "Nura is not a doctor and cannot diagnose or prescribe. This is a "
+                        "facility and benefit guide based on available records."
+                    ),
+                    where=(
+                        f"Go to {primary['name']} in {primary.get('address', city)}. "
+                        "Call or check the desk first because facility details can change."
+                    ),
+                    bring=primary.get("what_to_bring")
+                    or "Bring a valid ID, benefit card or proof, and any previous records.",
+                    say=primary.get("what_to_say")
+                    or "Please assess me and check what benefit I can use here.",
+                )
+            return self._structured_reply(
+                explanation=(
+                    "Nura is not a doctor and cannot diagnose or prescribe. I could not find a "
+                    f"verified matching facility in the current facility data for {city}."
+                ),
+                where="Contact your LGU health office, PhilHealth desk, or nearest public hospital to confirm where to go.",
+                bring="Bring a valid ID, benefit card or proof if available, and any previous records.",
+                say="Please help me find the right clinic or desk for my concern and benefits.",
             )
-        return (
-            "Hindi ako doktor at hindi ako nagdi-diagnose o nagrereseta. "
-            f"Ito ang mga pasilidad sa {city} na pwede mong kontakin para sa assessment "
-            f"at benefit verification gamit ang {benefits_label}: {names}."
+
+        if language_code == "ceb":
+            if primary:
+                return self._structured_reply(
+                    explanation=(
+                        "Dili ako doktor ug dili ako mo-diagnose o moreseta. Giya kini sa "
+                        "pasilidad ug benepisyo base sa available records."
+                    ),
+                    where=(
+                        f"Adto sa {primary['name']} sa {primary.get('address', city)}. "
+                        "Manawag o mag-confirm una sa desk kay mahimong mausab ang detalye."
+                    ),
+                    bring=primary.get("what_to_bring")
+                    or "Pagdala ug valid ID, benefit card o proof kung naa, ug previous records.",
+                    say=primary.get("what_to_say")
+                    or "Magpa-assess ko ug pa-check kung unsang benefit ang magamit nako diri.",
+                )
+            return self._structured_reply(
+                explanation=(
+                    "Dili ako doktor ug dili ako mo-diagnose o moreseta. Wala koy nakitang "
+                    f"verified matching facility sa current data para sa {city}."
+                ),
+                where="Kontaka ang LGU health office, PhilHealth desk, o pinakaduol nga public hospital para ma-confirm asa moadto.",
+                bring="Pagdala ug valid ID, benefit card o proof kung naa, ug previous records.",
+                say="Tabangi ko pangita sa sakto nga clinic o desk para sa akong concern ug benefit.",
+            )
+
+        if language_code == "ilo":
+            if primary:
+                return self._structured_reply(
+                    explanation=(
+                        "Saanak a doktor ken saanak nga ag-diagnose wenno ag-reseta. Daytoy ket "
+                        "gabay laeng iti pasilidad ken benepisyo manipud iti available records."
+                    ),
+                    where=(
+                        f"Mapan iti {primary['name']} iti {primary.get('address', city)}. "
+                        "Tumawag wenno i-confirm pay iti desk ta mabalin agbaliw dagiti detalye."
+                    ),
+                    bring=primary.get("what_to_bring")
+                    or "Mangitugot iti valid ID, benefit card wenno proof no adda, ken previous records.",
+                    say=primary.get("what_to_say")
+                    or "Agpa-assessak koma ken pa-check no ania a benefit ti mabalin nga usaren ditoy.",
+                )
+            return self._structured_reply(
+                explanation=(
+                    "Saanak a doktor ken saanak nga ag-diagnose wenno ag-reseta. Awan ti "
+                    f"nasarak a verified matching facility iti current data para iti {city}."
+                ),
+                where="Kontaken ti LGU health office, PhilHealth desk, wenno asideg a public hospital tapno ma-confirm no sadino ti papanan.",
+                bring="Mangitugot iti valid ID, benefit card wenno proof no adda, ken previous records.",
+                say="Tulongandak koma nga agsapul iti umiso a clinic wenno desk para iti concern ken benefit ko.",
+            )
+
+        if language_code == "hil":
+            if primary:
+                return self._structured_reply(
+                    explanation=(
+                        "Indi ako doktor kag indi ako naga-diagnose ukon naga-reseta. Giya ini sa "
+                        "pasilidad kag benepisyo base sa available records."
+                    ),
+                    where=(
+                        f"Kadto sa {primary['name']} sa {primary.get('address', city)}. "
+                        "Tawag ukon i-confirm anay sa desk kay posible magbag-o ang detalye."
+                    ),
+                    bring=primary.get("what_to_bring")
+                    or "Magdala sang valid ID, benefit card ukon proof kung ara, kag previous records.",
+                    say=primary.get("what_to_say")
+                    or "Magpa-assess ko kag pa-check kung ano nga benefit ang magamit ko diri.",
+                )
+            return self._structured_reply(
+                explanation=(
+                    "Indi ako doktor kag indi ako naga-diagnose ukon naga-reseta. Wala ako sang "
+                    f"nakit-an nga verified matching facility sa current data para sa {city}."
+                ),
+                where="Kontaka ang LGU health office, PhilHealth desk, ukon pinakamalapit nga public hospital para ma-confirm diin magkadto.",
+                bring="Magdala sang valid ID, benefit card ukon proof kung ara, kag previous records.",
+                say="Buligi ko pangita sang insakto nga clinic ukon desk para sa akon concern kag benefit.",
+            )
+
+        if primary:
+            return self._structured_reply(
+                explanation=(
+                    "Hindi ako doktor at hindi ako nagdi-diagnose o nagrereseta. Gabay ito sa "
+                    "pasilidad at benefit batay sa available records."
+                ),
+                where=(
+                    f"Pumunta sa {primary['name']} sa {primary.get('address', city)}. "
+                    "Tumawag o mag-confirm muna sa desk dahil maaaring magbago ang details."
+                ),
+                bring=primary.get("what_to_bring")
+                or "Magdala ng valid ID, benefit card o proof kung meron, at previous records.",
+                say=primary.get("what_to_say")
+                or "Magpapa-assess po ako at pa-check kung anong benefit ang magagamit ko rito.",
+            )
+        return self._structured_reply(
+            explanation=(
+                "Hindi ako doktor at hindi ako nagdi-diagnose o nagrereseta. Wala akong nahanap "
+                f"na verified matching facility sa current facility data para sa {city}."
+            ),
+            where="Kontakin ang LGU health office, PhilHealth desk, o pinakamalapit na public hospital para ma-confirm kung saan pupunta.",
+            bring="Magdala ng valid ID, benefit card o proof kung meron, at previous records.",
+            say="Patulong po hanapin ang tamang clinic o desk para sa concern at benefit ko.",
         )
 
-    def _fallback_facilities(
+    def _structured_reply(
         self,
-        session: SessionState,
-        message: str,
-    ) -> list[dict[str, Any]]:
-        city = session.location_city or "your city"
-        benefits_label = ", ".join(session.benefits) if session.benefits else "your benefits"
-        data_source = "LGU" if "No Declared Benefits" in session.benefits else "YAKAP"
-        return [
-            {
-                "name": f"{city} General Hospital",
-                "address": f"{city} public hospital district",
-                "distance_km": 2.4,
-                "accreditation": "PhilHealth Accredited",
-                "benefit_to_claim": (
-                    f"{benefits_label} - ask the billing or PhilHealth desk to verify coverage."
-                ),
-                "what_to_say": f"Pa-check up po para sa {message}. May {benefits_label} po ako.",
-                "what_to_bring": (
-                    "Valid ID, PhilHealth ID or MDR if available, and any doctor's request "
-                    "or previous records."
-                ),
-                "hours": "Call facility to confirm current OPD hours.",
-                "maps_url": f"https://maps.google.com/?q={quote_plus(city + ' General Hospital')}",
-                "latitude": 14.6760,
-                "longitude": 121.0437,
-                "data_source": data_source,
-                "data_year": 2026,
-                "data_reliability": "LOW",
-                "is_emergency_capable": True,
-            },
-            {
-                "name": f"{city} District Medical Center",
-                "address": f"{city} district health facility",
-                "distance_km": 4.8,
-                "accreditation": "PhilHealth Accredited",
-                "benefit_to_claim": f"{benefits_label} - confirm accepted benefits before going.",
-                "what_to_say": (
-                    f"May {benefits_label} po ako. Saan po pwede magpa-assess para sa concern ko?"
-                ),
-                "what_to_bring": (
-                    "Valid ID, benefit card or proof if available, and any relevant medical documents."
-                ),
-                "hours": "Call facility to confirm current OPD hours.",
-                "maps_url": (
-                    f"https://maps.google.com/?q={quote_plus(city + ' District Medical Center')}"
-                ),
-                "latitude": 14.6500,
-                "longitude": 121.0500,
-                "data_source": data_source,
-                "data_year": 2026,
-                "data_reliability": "LOW",
-                "is_emergency_capable": False,
-            },
-        ]
-
+        *,
+        explanation: str,
+        where: str,
+        bring: str,
+        say: str,
+    ) -> str:
+        return (
+            f"Explanation:\n{explanation}\n\n"
+            f"Where to go:\n{where}\n\n"
+            f"What to bring:\n{bring}\n\n"
+            f"What to say:\n{say}"
+        )
 
 class MockHospitalService(HospitalRecommendationService):
     """Backward-compatible local fallback for older imports."""
