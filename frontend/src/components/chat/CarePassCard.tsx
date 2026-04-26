@@ -72,13 +72,13 @@ export function CarePassCard({
             {pass.facilityName}
           </p>
           <p className="mt-1 text-body text-ink-soft">{pass.facilityAddress}</p>
-          {coords && (
-            <MapPreview
-              lat={coords.lat}
-              lng={coords.lng}
-              name={pass.facilityName}
-            />
-          )}
+          <MapPreview
+            lat={coords?.lat}
+            lng={coords?.lng}
+            name={pass.facilityName}
+            address={pass.facilityAddress}
+            mapsUrl={pass.mapsUrl}
+          />
         </div>
 
         {pass.benefitToClaim && (

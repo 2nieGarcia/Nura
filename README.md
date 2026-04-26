@@ -1,209 +1,156 @@
 # Nura
 
-Multilingual AI health navigator for Filipinos who do not know what they are entitled to.
+Nura is a multilingual healthcare access navigator for Filipinos. It helps users understand available benefits, find relevant accredited facilities, and prepare what to ask at the facility desk.
 
-Nura is a chatbot that helps health-illiterate Filipinos navigate the public healthcare system in their own dialect. It surfaces accredited hospitals based on the user's location and benefit coverage, explains what those benefits actually include, and routes life-threatening inputs to an emergency alert before any other logic runs.
+Nura is not a doctor. It does not diagnose, prescribe, assess clinical severity, or replace professional medical care. Emergency routing is deterministic keyword matching and always runs before session lookup, LLM calls, RAG retrieval, or facility search.
 
-Built for **InnOlympics 2026** — *Pangarap sa Kalusugan Track*.
+Built for InnOlympics 2026 - Pangarap sa Kalusugan Track.
 
----
-
-## Table of Contents
-
-- [Project Overview](#project-overview)
-- [The Problem](#the-problem)
-- [The Solution](#the-solution)
-- [Architecture & Responsibilities](#architecture--responsibilities)
-- [Tech Stack](#tech-stack)
-- [Repository Structure](#repository-structure)
-- [Backend & Session Setup (Lead)](#backend--session-setup-lead)
-- [API Contracts](#api-contracts)
-- [Emergency Keyword System](#emergency-keyword-system)
-- [Data / Hospital Recommender Setup (TBD)](#data--hospital-recommender-setup-tbd)
-- [AI / RAG Pipeline Setup (TBD)](#ai--rag-pipeline-setup-tbd)
-- [Frontend Setup (TBD)](#frontend-setup-tbd)
-- [Team](#team)
-- [Disclaimer](#disclaimer)
-
----
-
-## Project Overview
-
-**Project name:** Nura  
-**Track:** Pangarap sa Kalusugan — Health and Well-being Access  
-**Event:** InnOlympics 2026, April 25-26, KMC EXXA Tower  
-
-**Target audience:** Non-health-literate Filipinos who avoid consultations because they believe medical care is unaffordable, unaware that their PhilHealth membership covers free or subsidized services at accredited public hospitals.
-
-**Core constraint:** Nura is strictly an educational literacy tool and hospital navigator. It does not diagnose conditions, assess clinical severity, or recommend treatments. The emergency routing step is keyword-based pattern matching — not a medical triage assessment. This distinction must be communicated clearly during the demo.
-
----
-
-## The Problem
-
-Millions of Filipinos avoid doctors not because they lack coverage, but because they do not know they have it. The barriers are informational, not just financial:
-
-- Benefit documents are written in formal Filipino or English, inaccessible to low-literacy users.
-- Hospital accreditation lists are maintained as inconsistently formatted data or unstructured spreadsheets.
-- Health information is not widely available in regional dialects.
-
-The result: people who are already covered choose to delay care rather than going to a hospital that would serve them for free.
-
----
-
-## The Solution
-
-Nura routes every incoming message through a fixed pipeline orchestrated by the backend API:
-
-1. **Emergency keyword detection.** Runs first. If the message contains phrases associated with life-threatening situations, Nura halts and returns an emergency alert.
-2. **Session completeness check.** If the system does not yet have the user's city and benefit membership, it asks follow-up questions before proceeding.
-3. **Intent routing & Retrieval.** (To be implemented by AI & Data teams). The backend will route the completed session data to either the RAG pipeline (for benefit questions) or the Hospital Recommender (for location searches).
-4. **Response composition.** The final generated response is returned to the frontend via the API.
-
----
-
-## Architecture & Responsibilities
-
-The architecture is decoupled to allow the team to work in parallel. The backend API handles state and routing, while delegating the heavy lifting to the modules built by the rest of the team.
+## Current Architecture
 
 ```text
-User (Browser / UI) ---> [ FRONTEND TEAM ]
-                              |
-                        JSON over REST
-                              v
-                      [ BACKEND / LEAD ]
-                  FastAPI Orchestrator & API
-                              |
-    +-------------------------+-------------------------+
-    |                         |                         |
-[ SESSIONS ]              [ AI / RAG ]              [ DATA ]
-Supabase Table            Document Embedding        Hospital Cleaning
-(Backend Lead)            & Generation              & Recommender
-                          (AI Team)                 (Data Team)
-
+Frontend (React/Vite)
+        |
+        | REST JSON
+        v
+Backend (FastAPI, /api/v1)
+        |
+        +-- emergency keyword classifier
+        +-- session repository (Supabase or memory fallback)
+        +-- orchestrator inference (optional Vertex Gemini extraction)
+        +-- AI/RAG service
+        |      +-- Vertex text-embedding-004 query embeddings
+        |      +-- Supabase pgvector match_benefits RPC
+        |      +-- Gemini response composition
+        |      +-- optional response translation
+        |
+        +-- hospital service
+               +-- Supabase health_facilities search
+               +-- exact city, fuzzy city, region fallback
+               +-- frontend-compatible facility normalization
 ```
 
----
-
-## Tech Stack
-
-| Layer | Technology | Owner |
-|-------|------------|-------|
-| Backend API & Orchestration | FastAPI (Python 3.11) | Project Lead |
-| Session Database | Supabase (PostgreSQL) | Project Lead |
-| LLM & Embeddings | TBD by AI Engineer | AI / LLM Engineer |
-| Hospital DB & Search | TBD by Data Engineer | Data / Locator |
-| Frontend & Maps | TBD by Frontend Dev | Frontend Developer |
-
----
+The source of truth is this `Nura` repo. The separate `nura-rag/backend/app` shape was merged into the existing `Nura/backend` service boundaries rather than copied as a second app.
 
 ## Repository Structure
 
 ```text
-nura/
-|
+Nura/
 |-- backend/
-|   |-- main.py                        # FastAPI entry point
-|   |-- requirements.txt
-|   |-- .env.example
-|   |
+|   |-- main.py
+|   |-- config.py
+|   |-- dependencies.py
+|   |-- models/
+|   |   |-- chat.py
+|   |   |-- session.py
 |   |-- routers/
-|   |   |-- chat.py                    # POST /api/v1/chat
-|   |   |-- hospitals.py               # GET /api/v1/hospitals (Connects to Data team logic)
-|   |   |-- sessions.py                # POST & GET /api/v1/session
-|   |
+|   |   |-- chat.py
+|   |   |-- session.py
 |   |-- services/
-|   |   |-- orchestrator.py            # Main logic flow & routing
-|   |   |-- emergency_classifier.py    # Deterministic keyword check
-|   |   |-- ai_rag_service.py          # [INTERNAL] Placeholder for AI Team's logic
-|   |   |-- hospital_service.py        # [INTERNAL] Placeholder for Data Team's logic
-|   |
+|   |   |-- orchestrator.py
+|   |   |-- emergency_classifier.py
+|   |   |-- orchestrator_inference.py
+|   |   |-- ai_rag_service.py
+|   |   |-- hospital_service.py
 |   |-- db/
-|       |-- supabase_client.py
-|       |-- migrations/
-|           |-- 001_create_sessions.sql
-|
-|-- data/
-|   |-- emergency_keywords.json        # Multilingual emergency keyword list
-|   |-- [TBD_hospital_datasets/]       # Workspace for Data team
-|   |-- [TBD_philhealth_docs/]         # Workspace for AI team
+|   |   |-- session_repository.py
+|   |   |-- supabase_client.py
+|   |   |-- migrations/
+|   |       |-- 001_create_sessions.sql
+|   |       |-- 002_create_rag_facility_tables.sql
+|   |-- scripts/
+|       |-- ingest_philhealth.py
 |
 |-- frontend/
-|   |-- [TBD by frontend developer]
+|   |-- src/lib/api.ts
+|   |-- src/types/chat.ts
+|   |-- src/types/facility.ts
 |
+|-- data/emergency_keywords.json
+|-- docs/
 |-- README.md
 ```
 
----
+## Backend Setup
 
-**3. Backend & Session Setup (Lead):**
+```powershell
+cd Nura\backend
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+copy .env.example .env
+```
 
-
-## Backend & Session Setup (Lead)
-
-This section covers the setup for the base API and session management.
-
-### Prerequisites
-
-- Python 3.11
-- Supabase account and project
-
-### Environment Variables
-
-Copy `backend/.env.example` to `backend/.env` and fill in your keys.
+For local smoke tests without Supabase or Gemini, set:
 
 ```env
-SUPABASE_URL=https://your-project-id.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-ENVIRONMENT=development
-ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
-SESSION_TTL_MINUTES=60
+SESSION_BACKEND=memory
+SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+GOOGLE_API_KEY=
+VERTEX_PROJECT_ID=
 ```
 
-### Running the API
+Run the API:
 
-```bash
-cd backend
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-uvicorn main:app --reload --port 8000
+```powershell
+python -m uvicorn main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-### Session Database Migration
+Health check:
 
-Run this in your Supabase SQL Editor to initialize the session store:
-
-```SQL
-CREATE TABLE sessions (
-    id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    language             TEXT,
-    location_city        TEXT,
-    location_raw         TEXT,
-    benefits             TEXT[] DEFAULT '{}',
-    conversation_history JSONB DEFAULT '[]',
-    created_at           TIMESTAMPTZ DEFAULT NOW(),
-    updated_at           TIMESTAMPTZ DEFAULT NOW(),
-    expires_at           TIMESTAMPTZ DEFAULT NOW() + INTERVAL '60 minutes'
-);
-
-CREATE INDEX idx_sessions_expires ON sessions(expires_at);
+```text
+GET http://127.0.0.1:8000/health
 ```
 
+## Backend Environment Variables
 
----
+Copy `backend/.env.example` to `backend/.env`.
 
-## API Contracts
+| Variable | Purpose |
+|---|---|
+| `SUPABASE_URL` | Supabase project URL for sessions, RAG, and facilities. |
+| `SUPABASE_SERVICE_ROLE_KEY` | Server-side Supabase key. Required for Supabase-backed runtime and ingestion. |
+| `SESSION_BACKEND` | `auto`, `memory`, or `supabase`. Use `memory` for local frontend smoke tests. |
+| `SESSION_TTL_MINUTES` | Rolling session expiration window. |
+| `ALLOWED_ORIGINS` | Comma-separated frontend origins for CORS. |
+| `VERTEX_PROJECT_ID` or `GCP_PROJECT_ID` | Google Cloud project for Vertex embeddings and optional orchestrator inference. |
+| `VERTEX_LOCATION` or `GCP_REGION` | Vertex location. Defaults to `us-central1`. |
+| `VERTEX_MODEL` | Optional orchestrator extraction model used before rule fallback. |
+| `VERTEX_TIMEOUT_SECONDS` | Timeout for orchestrator extraction calls. |
+| `GOOGLE_API_KEY` | Gemini API key for answer composition. If missing, service falls back to deterministic copy. |
+| `GEMINI_MODEL` | Gemini model for response composition. |
+| `GEMINI_TIMEOUT_SECONDS` | Timeout for Gemini response composition. |
+| `RAG_EMBEDDING_MODEL` | Vertex embedding model. Default: `text-embedding-004`. |
+| `RAG_MATCH_RPC` | Supabase RPC name for pgvector retrieval. Default: `match_benefits`. |
+| `RAG_MATCH_THRESHOLD` | Similarity threshold passed to the RPC. |
+| `RAG_MATCH_COUNT` | Maximum retrieved benefit chunks. |
+| `TRANSLATION_ENABLED` | Enables `deep_translator` response translation when language is not English. |
+| `FACILITY_TABLE_NAME` | Facility table. Default: `health_facilities`. |
+| `FACILITY_DEFAULT_REGION` | Optional region prefilter. Leave blank when only city is known. |
+| `FACILITY_RESULT_LIMIT` | Maximum facilities returned to the frontend. |
+| `FACILITY_MAX_CANDIDATES` | Candidate rows fetched before exact/fuzzy matching. |
+| `FACILITY_FUZZY_THRESHOLD` | Fuzzy city match threshold from 0 to 100. |
 
-These are the endpoints the Frontend Developer will call. The Backend API acts as the bridge between the UI and the modules created by the Data and AI teams.
+## API Contract
 
-**Base URL:** `http://localhost:8000/api/v1`
+Base URL:
 
-### 1. `POST /session`
+```text
+http://127.0.0.1:8000/api/v1
+```
 
-Creates a new session. Call once on first page load.
+### `POST /session`
 
-**Response:**
+Request:
+
+```json
+{
+  "language": "fil"
+}
+```
+
+Response:
 
 ```json
 {
@@ -212,121 +159,183 @@ Creates a new session. Call once on first page load.
 }
 ```
 
-### 2. `POST /chat`
-The main endpoint for the conversation.
+### `POST /chat`
 
-**Request Body:**
+Request:
+
 ```json
 {
   "session_id": "550e8400-e29b-41d4-a716-446655440000",
-  "message": "Masakit ang likod ko"
+  "message": "Masakit ulo ko. Saan ako pwede pumunta?",
+  "language": "fil",
+  "location_city": "Quezon City",
+  "benefits": ["PhilHealth"],
+  "intent": "HOSPITAL"
 }
 ```
 
-Response Type Examples:
+`language`, `location_city`, `benefits`, and `intent` are optional. The frontend currently sends `intent: "HOSPITAL"` for facility navigation.
 
-- `EMERGENCY`: Returned if the backend detects life-threatening keywords.
-- `FOLLOW_UP`: Returned if the user hasn't provided their location or benefits yet.
-- `RECOMMENDATION`: Returned when the API successfully queries the Data Team's hospital list.
-- `RAG_ANSWER`: Returned when the API successfully queries the AI Team's benefit documentation.
+Response:
 
-### 3. GET /hospitals
-
-Filtered list for a standalone map view. Wired to the Data Team's database logic.
-
----
-
-## Emergency Keyword System
-
-The emergency classifier in `services/emergency_classifier.py` is a deterministic system. It checks the user's message against `data/emergency_keywords.json` in multiple dialects (Tagalog, Cebuano, English, etc.) before any AI processing happens.
-
----
-
-## Data / Hospital Recommender Setup (TBD)
-
-Owner: Data / Locator Team Member
-
-Placeholders for Data Team:
-
-- Provide the cleaned hospitals table schema.
-- Provide the logic for the `hospital_service.py` to filter by city/accreditation.
-
----
-
-## AI / RAG Pipeline Setup (TBD)
-
-Owner: AI / LLM Engineer
-
-Placeholders for AI Team:
-
-- Provide document embedding logic (Vertex AI / pgvector).
-- Provide the logic for `ai_rag_service.py` to generate answers based on PhilHealth PDFs.
-
----
-
-## Local Frontend + Backend Run
-
-The current UI is wired to the FastAPI backend at `http://127.0.0.1:8000/api/v1`.
-For local development without Supabase, use the in-memory session fallback.
-
-### Backend
-
-```bash
-cd backend
-python -m venv venv
-venv\Scripts\activate
-pip install -r requirements.txt
-set SESSION_BACKEND=memory
-set ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
-python -m uvicorn main:app --reload --host 127.0.0.1 --port 8000
+```json
+{
+  "session_id": "550e8400-e29b-41d4-a716-446655440000",
+  "response_type": "RECOMMENDATION",
+  "message": "Hindi ako doktor...",
+  "data": {
+    "facilities": [
+      {
+        "name": "Quezon City General Hospital",
+        "address": "Quezon City public hospital district",
+        "accreditation": "PhilHealth Accredited",
+        "benefit_to_claim": "Ask the PhilHealth desk to verify coverage and requirements.",
+        "what_to_say": "Magpapa-assess po ako...",
+        "what_to_bring": "Valid ID...",
+        "maps_url": "https://maps.google.com/?q=...",
+        "data_source": "YAKAP",
+        "data_reliability": "LOW"
+      }
+    ],
+    "hospitals": [
+      {
+        "name": "Quezon City General Hospital",
+        "address": "Quezon City public hospital district",
+        "data_source": "YAKAP"
+      }
+    ]
+  },
+  "missing_fields": []
+}
 ```
 
-Use `SESSION_BACKEND=supabase` with real `SUPABASE_URL` and
-`SUPABASE_SERVICE_ROLE_KEY` when the Supabase session table is ready.
+The backend always keeps facilities consumable through `data.facilities`. It also includes `data.hospitals` as an alias for compatibility with existing frontend normalization.
 
-### Frontend
+Response types:
 
-```bash
-cd frontend
-copy .env.example .env
+| Type | Meaning |
+|---|---|
+| `EMERGENCY` | Emergency keyword matched. No LLM, RAG, session lookup, or facility search runs. |
+| `FOLLOW_UP` | Session is missing city or benefits. |
+| `RECOMMENDATION` | Facility search path completed or returned fallback facilities. |
+| `RAG_ANSWER` | Benefit guide RAG path completed or returned fallback guidance. |
+
+## Orchestration Rules
+
+The backend pipeline in `services/orchestrator.py` is:
+
+1. Emergency keyword detection.
+2. Session lookup and session update.
+3. Session completeness gate for `location_city` and `benefits`.
+4. Intent resolution from request, optional LLM extraction, or rules.
+5. Hospital service or AI/RAG service call.
+
+Do not move LLM, RAG, or facility work before steps 1-3.
+
+## Database Setup
+
+Run these migrations in order in the Supabase SQL editor:
+
+```text
+backend/db/migrations/001_create_sessions.sql
+backend/db/migrations/002_create_rag_facility_tables.sql
+```
+
+`002_create_rag_facility_tables.sql` creates:
+
+- `benefit_guides` with `embedding vector(768)`.
+- `match_benefits(query_embedding, match_threshold, match_count)` RPC.
+- `health_facilities` with city, region, PhilHealth, and Malasakit fields.
+
+The RAG retriever expects the RPC to return `id`, `content`, `source`, and `similarity`.
+
+## Ingesting Benefit Guides
+
+After running the RAG migration and configuring Supabase plus Vertex:
+
+```powershell
+cd Nura\backend
+venv\Scripts\activate
+python scripts\ingest_philhealth.py --pdf path\to\philhealth_benefits.pdf --source "PhilHealth Benefits Guide"
+```
+
+The script extracts PDF text, chunks it, embeds chunks with Vertex `text-embedding-004`, and inserts rows into `benefit_guides`. It has no hardcoded local paths.
+
+## Facility Data Requirements
+
+Populate `health_facilities` with at least:
+
+```text
+name_of_health_facility
+street
+municipality_city
+region
+is_philhealth
+is_malasakit
+expire_date
+source
+```
+
+Facility search performs:
+
+1. Optional region prefilter from `FACILITY_DEFAULT_REGION`.
+2. Benefit flag filters when the user has PhilHealth, YAKAP, Senior, PWD, 4Ps, or Malasakit.
+3. Exact city match.
+4. Fuzzy city match.
+5. Region or candidate fallback.
+
+If Supabase is unavailable or no candidates can be fetched, the service returns local fallback facilities in the same frontend-compatible shape.
+
+## Frontend Setup
+
+```powershell
+cd Nura\frontend
 npm install
+copy .env.example .env
 npm run dev -- --host 127.0.0.1 --port 5173
 ```
 
-`frontend/.env` should include:
+Frontend `.env`:
 
 ```env
 VITE_API_URL=http://127.0.0.1:8000/api/v1
 VITE_USE_MOCK_API=false
 ```
 
-### Integrated Smoke Test
+Open:
 
-1. Open `http://127.0.0.1:5173/`.
-2. Enter a concern such as `Masakit ulo`.
-3. Enter `Quezon City`.
-4. Select `PhilHealth`.
-5. Submit benefits.
+```text
+http://127.0.0.1:5173
+```
 
-The frontend creates a backend session through `POST /api/v1/session`, then
-sends the completed intake to `POST /api/v1/chat`. The current hospital results
-come from `services/hospital_service.py`, which is still a placeholder until the
-Data Team's real recommender is available.
+## Local Smoke Test
 
----
+1. Start the backend with `SESSION_BACKEND=memory`.
+2. Start the frontend with `VITE_USE_MOCK_API=false`.
+3. Enter a concern such as `Masakit ulo`.
+4. Enter `Quezon City`.
+5. Select `PhilHealth`.
+6. Submit benefits.
 
-## Team
+Expected result: `POST /api/v1/chat` returns `RECOMMENDATION`, a disclaimer-bearing message, and facilities under `data.facilities` and `data.hospitals`.
 
-| Member | Role | Responsibilities |
-|--------|------|------------------|
-| Antonio Garcia | Project Lead | API Orchestration, Session DB, Endpoint logic, JSON Contracts, Project Architecture| 
-| Mark Anub | Frontend Developer | UI/UX, API consumption |
-| Charles Cabatian | Data / Locator | Hospital data cleaning, DB search logic |
-| Renz Viloria | AI / LLM Engineer | RAG Pipeline, PDF processing, prompt engineering |
+## Verification Commands
 
----
+Backend:
 
-## Disclaimer
+```powershell
+cd Nura
+python -m pytest .\backend\tests
+python -m py_compile .\backend\config.py .\backend\dependencies.py .\backend\services\ai_rag_service.py .\backend\services\hospital_service.py .\backend\scripts\ingest_philhealth.py
+```
 
-Nura is strictly an educational literacy tool and hospital navigator. It does not provide medical diagnoses, clinical assessments, treatment recommendations, or medical triage of any kind. Emergency routing is deterministic keyword-based pattern matching and is not a substitute for professional medical evaluation.
+Frontend contract/build check:
 
+```powershell
+cd Nura\frontend
+npm run build
+```
+
+## Safety Boundary
+
+Nura is strictly an educational literacy and healthcare access tool. It does not provide medical diagnoses, clinical assessments, treatment recommendations, prescriptions, dosage guidance, or medical triage. For emergency keywords, Nura immediately tells the user to call emergency services or go to the nearest ER.
