@@ -1,6 +1,6 @@
 # Nura LLM Context File
 
-Last updated: 2026-04-25
+Last updated: 2026-04-26
 
 ## Project Identity
 Nura is a Filipino healthcare access navigator.
@@ -26,19 +26,21 @@ Nura is NOT a doctor and must never diagnose, prescribe, or imply confirmed cond
 - Typed contracts for chat request/response and facility models
 
 ### Backend
-- FastAPI app skeleton
-- Typed Pydantic schemas for request/response and facility data
+- FastAPI app under `backend/` with `POST /api/v1/session` and `POST /api/v1/chat`
+- Typed Pydantic schemas for request/response and session data
 - Deterministic emergency keyword guard in backend
-- Basic language profile selector (Filipino fallback, English for pure English)
-- Mocked POST /chat endpoint with typed placeholder response
-- Modular service boundaries for future integrations
+- Session completeness gate before RAG or facility calls
+- Optional Vertex Gemini extraction for intent/city/benefits before rule fallback
+- Supabase pgvector benefit retrieval in `services/ai_rag_service.py`
+- Gemini response composition and optional `deep_translator` translation
+- Supabase `health_facilities` search in `services/hospital_service.py`
+- Contract-compatible fallback behavior when Supabase, pgvector, Gemini, or translation is unavailable
 
-## Integration Boundaries (Not Yet Implemented)
+## Remaining Integration Boundaries
 - Google Maps Geocoding integration
-- Supabase Postgres + PostGIS nearby facility query
-- Supabase pgvector RAG retrieval for benefit guides
-- Gemini Flash response composition
-- Production data ingestion and verification pipelines
+- PostGIS nearby radius search, if precise coordinates are added later
+- Production facility dataset upload and quality verification
+- Production benefit guide ingestion and retrieval evaluation
 
 ## LLM Working Agreement (Best Practice)
 When making changes, do the following:
@@ -66,4 +68,4 @@ Backend:
 - `python -m venv .venv`
 - `.venv\\Scripts\\activate`
 - `pip install -r requirements.txt`
-- `uvicorn app.main:app --reload --port 8000`
+- `uvicorn main:app --reload --port 8000`

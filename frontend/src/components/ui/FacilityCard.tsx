@@ -82,18 +82,14 @@ export function PrimaryRecommendation({
           </p>
         )}
 
-        {/* Live map preview with facility pin */}
-        {coords ? (
-          <MapPreview
-            lat={coords.lat}
-            lng={coords.lng}
-            name={facility.name}
-          />
-        ) : (
-          <div className="mt-4 flex h-[120px] items-center justify-center rounded-form border border-dashed border-paper-edge bg-paper px-4 text-center text-meta text-ink-mute">
-            Walang available na mapa para sa pasilidad na ito.
-          </div>
-        )}
+        {/* Live map preview. Uses coordinates when present, otherwise searches by facility name/address. */}
+        <MapPreview
+          lat={coords?.lat}
+          lng={coords?.lng}
+          name={facility.name}
+          address={facility.address}
+          mapsUrl={facility.maps_url}
+        />
 
         {/* One-sentence reason this is the answer. Concern echoed back so the
             user knows the system actually heard them. */}

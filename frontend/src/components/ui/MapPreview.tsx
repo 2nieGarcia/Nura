@@ -1,17 +1,44 @@
 type MapPreviewProps = {
-  lat: number;
-  lng: number;
+  lat?: number | null;
+  lng?: number | null;
   name: string;
+  address?: string | null;
+  mapsUrl?: string | null;
 };
 
-export function MapPreview({ lat, lng, name }: MapPreviewProps): JSX.Element {
-  const apiKey = import.meta.env.VITE_GOOGLE_MAPS_KEY;
+function hasCoords(lat?: number | null, lng?: number | null): boolean {
+  return (
+    typeof lat === "number" &&
+    typeof lng === "number" &&
+    Number.isFinite(lat) &&
+    Number.isFinite(lng)
+  );
+}
 
-  // Option A — OpenStreetMap embed (FREE, no API key)
+function buildSearchQuery(name: string, address?: string | null): string {
+  return [name, address].filter(Boolean).join(", ");
+}
+
+export function MapPreview({
+  lat,
+  lng,
+  name,
+  address,
+  mapsUrl,
+}: MapPreviewProps): JSX.Element {
+  const apiKey = import.meta.env.VITE_GOOGLE_MAPS_KEY;
+  const searchQuery = buildSearchQuery(name, address);
+  const encodedQuery = encodeURIComponent(searchQuery || mapsUrl || name);
+  const canUseCoordinates = hasCoords(lat, lng);
+
   const renderOSM = () => {
-    const bbox = `${lng - 0.005},${lat - 0.003},${lng + 0.005},${lat + 0.003}`;
-    const src = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat},${lng}`;
-    
+    if (!canUseCoordinates) return null;
+
+    const latitude = lat as number;
+    const longitude = lng as number;
+    const bbox = `${longitude - 0.005},${latitude - 0.003},${longitude + 0.005},${latitude + 0.003}`;
+    const src = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${latitude},${longitude}`;
+
     return (
       <iframe
         title={`Map: ${name}`}
@@ -25,9 +52,10 @@ export function MapPreview({ lat, lng, name }: MapPreviewProps): JSX.Element {
     );
   };
 
-  // Option B — Google Maps Embed (needs API key)
   const renderGoogle = (key: string) => {
-    const src = `https://www.google.com/maps/embed/v1/place?key=${key}&q=${lat},${lng}&zoom=15`;
+    const query = canUseCoordinates ? `${lat as number},${lng as number}` : searchQuery;
+    const src = `https://www.google.com/maps/embed/v1/place?key=${key}&q=${encodeURIComponent(query)}&zoom=15`;
+
     return (
       <iframe
         title={`Map: ${name}`}
@@ -41,9 +69,25 @@ export function MapPreview({ lat, lng, name }: MapPreviewProps): JSX.Element {
     );
   };
 
+  const renderGoogleSearch = () => {
+    const src = `https://www.google.com/maps?q=${encodedQuery}&output=embed`;
+
+    return (
+      <iframe
+        title={`Map search: ${name}`}
+        src={src}
+        width="100%"
+        height="180"
+        style={{ border: 0 }}
+        loading="lazy"
+        referrerPolicy="no-referrer-when-downgrade"
+      />
+    );
+  };
+
   return (
     <div className="mt-4 overflow-hidden rounded-form border border-paper-edge bg-paper-edge/10">
-      {apiKey ? renderGoogle(apiKey) : renderOSM()}
+      {apiKey ? renderGoogle(apiKey) : canUseCoordinates ? renderOSM() : renderGoogleSearch()}
     </div>
   );
 }

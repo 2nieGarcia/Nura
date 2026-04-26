@@ -4,9 +4,14 @@ from pathlib import Path
 from config import get_settings
 from db.session_repository import InMemorySessionRepository, SessionRepository
 from db.supabase_client import get_supabase_client
-from services.ai_rag_service import MockAIRagService
+from services.ai_rag_service import (
+    GeminiResponseComposer,
+    PgVectorBenefitGuideRetriever,
+    RagAIRagService,
+    ResponseTranslator,
+)
 from services.emergency_classifier import KeywordEmergencyClassifier
-from services.hospital_service import MockHospitalService
+from services.hospital_service import HospitalRecommendationService, SupabaseHealthFacilitySearch
 from services.interfaces import OrchestratorInferenceService
 from services.orchestrator import ChatOrchestrator
 from services.orchestrator_inference import VertexGeminiInferenceService
@@ -51,21 +56,71 @@ def get_emergency_classifier() -> KeywordEmergencyClassifier:
 
 
 @lru_cache
-def get_hospital_service() -> MockHospitalService:
-    return MockHospitalService()
+def get_response_translator() -> ResponseTranslator:
+    settings = get_settings()
+    return ResponseTranslator(enabled=settings.translation_enabled)
 
 
 @lru_cache
-def get_ai_rag_service() -> MockAIRagService:
-    return MockAIRagService()
+def get_benefit_guide_retriever() -> PgVectorBenefitGuideRetriever:
+    settings = get_settings()
+    return PgVectorBenefitGuideRetriever(
+        supabase_url=settings.supabase_url,
+        supabase_key=settings.supabase_service_role_key,
+        project_id=settings.resolved_vertex_project_id,
+        location=settings.resolved_vertex_location,
+        embedding_model=settings.rag_embedding_model,
+        rpc_name=settings.rag_match_rpc,
+        match_threshold=settings.rag_match_threshold,
+    )
+
+
+@lru_cache
+def get_gemini_response_composer() -> GeminiResponseComposer:
+    settings = get_settings()
+    return GeminiResponseComposer(
+        api_key=settings.google_api_key,
+        model_name=settings.gemini_model,
+        timeout_seconds=settings.gemini_timeout_seconds,
+        translator=get_response_translator(),
+    )
+
+
+@lru_cache
+def get_hospital_service() -> HospitalRecommendationService:
+    settings = get_settings()
+    return HospitalRecommendationService(
+        facility_search=SupabaseHealthFacilitySearch(
+            supabase_url=settings.supabase_url,
+            supabase_key=settings.supabase_service_role_key,
+            table_name=settings.facility_table_name,
+            default_region=settings.facility_default_region,
+            max_candidates=settings.facility_max_candidates,
+            fuzzy_threshold=settings.facility_fuzzy_threshold,
+        ),
+        response_composer=get_gemini_response_composer(),
+        guide_retriever=get_benefit_guide_retriever(),
+        result_limit=settings.facility_result_limit,
+        rag_chunk_limit=settings.rag_match_count,
+    )
+
+
+@lru_cache
+def get_ai_rag_service() -> RagAIRagService:
+    settings = get_settings()
+    return RagAIRagService(
+        retriever=get_benefit_guide_retriever(),
+        composer=get_gemini_response_composer(),
+        max_chunks=settings.rag_match_count,
+    )
 
 
 @lru_cache
 def get_orchestrator_inference_service() -> OrchestratorInferenceService:
     settings = get_settings()
     return VertexGeminiInferenceService(
-        project_id=settings.vertex_project_id,
-        location=settings.vertex_location,
+        project_id=settings.resolved_vertex_project_id,
+        location=settings.resolved_vertex_location,
         model=settings.vertex_model,
         timeout_seconds=settings.vertex_timeout_seconds,
     )

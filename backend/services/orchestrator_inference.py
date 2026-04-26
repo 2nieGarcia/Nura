@@ -194,6 +194,9 @@ class VertexGeminiInferenceService(OrchestratorInferenceService):
         )
 
     def _get_access_token_and_project(self) -> tuple[str, str, str | None]:
+        if self.project_id in {"your-gcp-project-id", "your-project-id"}:
+            return "", "", "auth_not_configured"
+
         try:
             credentials, detected_project_id = google.auth.default(
                 scopes=["https://www.googleapis.com/auth/cloud-platform"]
@@ -211,7 +214,7 @@ class VertexGeminiInferenceService(OrchestratorInferenceService):
             return "", "", "missing_access_token"
 
         project_id = self.project_id or (detected_project_id or "").strip()
-        if not project_id:
+        if not project_id or project_id in {"your-gcp-project-id", "your-project-id"}:
             return "", "", "missing_vertex_project_id"
 
         return access_token, project_id, None
