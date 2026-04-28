@@ -60,9 +60,11 @@ class StubEmergencyClassifier:
 class SpyHospitalService:
     def __init__(self) -> None:
         self.called = False
+        self.last_message: str | None = None
 
     def recommend(self, session: SessionState, message: str) -> ServiceResult:
         self.called = True
+        self.last_message = message
         return ServiceResult(
             response_type="RECOMMENDATION",
             message="Hospital recommendation",
@@ -156,8 +158,8 @@ class ChatOrchestratorTests(unittest.TestCase):
 
         self.assertEqual(response.response_type, "FOLLOW_UP")
         self.assertEqual(response.missing_fields, ["location_city", "benefits"])
-        self.assertIn("What city are you currently in?", response.message)
-        self.assertIn("What benefits or memberships do you have", response.message)
+        self.assertIn("Location: What city or barangay are you in?", response.message)
+        self.assertIn("Benefits: Do you have PhilHealth", response.message)
         self.assertEqual(len(session.conversation_history), 2)
         self.assertEqual(session.conversation_history[0]["role"], "user")
         self.assertEqual(session.conversation_history[1]["role"], "assistant")
@@ -213,6 +215,32 @@ class ChatOrchestratorTests(unittest.TestCase):
         self.assertTrue(hospital_service.called)
         self.assertFalse(ai_rag_service.called)
         self.assertEqual(session.conversation_history[-1]["content"], "Hospital recommendation")
+
+    def test_hospital_service_uses_original_concern_when_latest_turn_is_location(self) -> None:
+        session = build_session(location_city="Cebu", benefits=["PhilHealth"])
+        repository = InMemorySessionRepository(session)
+        hospital_service = SpyHospitalService()
+        orchestrator = ChatOrchestrator(
+            session_repository=repository,
+            emergency_classifier=StubEmergencyClassifier([]),
+            hospital_service=hospital_service,
+            ai_rag_service=SpyAIRagService(),
+            session_ttl_minutes=60,
+        )
+
+        response = orchestrator.handle_chat(
+            ChatRequest(
+                session_id=session.id,
+                message="Cebu",
+                concern="Masakit ulo",
+                location_city="Cebu",
+                intent="HOSPITAL",
+            )
+        )
+
+        self.assertEqual(response.response_type, "RECOMMENDATION")
+        self.assertEqual(hospital_service.last_message, "Masakit ulo")
+        self.assertEqual(session.conversation_history[0]["content"], "Cebu")
 
     def test_uses_llm_inference_for_missing_fields_and_intent(self) -> None:
         session = build_session(location_city=None, benefits=[])

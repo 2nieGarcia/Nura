@@ -4,16 +4,37 @@ import {
   isLanguageCode,
   type LanguageCode,
 } from "../types/language";
+import type { ChatMessage, ChatStep } from "./useNuraChat";
 
 const STORAGE_KEY = "nura.cached_results";
 const CARE_PASS_KEY = "nura.care_pass";
 const LANGUAGE_KEY = "nura.language";
+const CONVERSATION_KEY = "nura.conversation";
+const FEEDBACK_LOG_KEY = "nura.feedback_log";
 const CARE_PASS_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const CONVERSATION_TTL_MS = 30 * 60 * 1000;
 
 type CachedResults = {
   facilities: Facility[];
   reply: string;
   timestamp: number;
+};
+
+export type StoredConversation = {
+  messages: ChatMessage[];
+  step: ChatStep;
+  concern: string;
+  location: string;
+  savedAt: number;
+};
+
+export type FeedbackRating = "positive" | "negative";
+
+type FeedbackLogEntry = {
+  rating: FeedbackRating;
+  timestamp: number;
+  concern: string;
+  location: string;
 };
 
 export type CarePass = {
@@ -69,6 +90,92 @@ export function getCachedResults(): CachedResults | null {
 export function clearCachedResults(): void {
   try {
     localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // silently fail
+  }
+}
+
+export function saveConversation(
+  messages: ChatMessage[],
+  step: ChatStep,
+  concern: string,
+  location: string
+): void {
+  try {
+    const payload: StoredConversation = {
+      messages,
+      step,
+      concern,
+      location,
+      savedAt: Date.now(),
+    };
+    localStorage.setItem(CONVERSATION_KEY, JSON.stringify(payload));
+  } catch {
+    // silently fail
+  }
+}
+
+export function getConversation(): StoredConversation | null {
+  try {
+    const raw = localStorage.getItem(CONVERSATION_KEY);
+    if (!raw) return null;
+
+    const data = JSON.parse(raw) as StoredConversation;
+    if (
+      !Array.isArray(data.messages) ||
+      typeof data.savedAt !== "number" ||
+      typeof data.concern !== "string" ||
+      typeof data.location !== "string"
+    ) {
+      localStorage.removeItem(CONVERSATION_KEY);
+      return null;
+    }
+
+    if (Date.now() - data.savedAt > CONVERSATION_TTL_MS) {
+      localStorage.removeItem(CONVERSATION_KEY);
+      return null;
+    }
+
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+export function clearConversation(): void {
+  try {
+    localStorage.removeItem(CONVERSATION_KEY);
+  } catch {
+    // silently fail
+  }
+}
+
+export function appendFeedbackLog(
+  rating: FeedbackRating,
+  concern: string,
+  location: string
+): void {
+  try {
+    const raw = localStorage.getItem(FEEDBACK_LOG_KEY);
+    const existing = raw ? (JSON.parse(raw) as unknown) : [];
+    const entries = Array.isArray(existing)
+      ? existing.filter((entry): entry is FeedbackLogEntry => {
+          return (
+            typeof entry === "object" &&
+            entry !== null &&
+            (entry as FeedbackLogEntry).rating !== undefined
+          );
+        })
+      : [];
+
+    entries.push({
+      rating,
+      timestamp: Date.now(),
+      concern,
+      location,
+    });
+
+    localStorage.setItem(FEEDBACK_LOG_KEY, JSON.stringify(entries.slice(-50)));
   } catch {
     // silently fail
   }

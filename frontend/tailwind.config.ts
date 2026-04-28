@@ -32,34 +32,34 @@ const config: Config = {
     extend: {
       colors: {
         // Surfaces ---------------------------------------------------------
-        paper: "#F1F4F6",        // app background, cool off-white (reads with navy)
-        "paper-edge": "#DDE3E7", // 1px hairline rules
-        card: "#FFFFFF",         // surfaces used sparingly: top recommendation, inputs
+        paper: "rgb(var(--color-bg-primary) / <alpha-value>)",
+        "paper-edge": "rgb(var(--color-paper-edge) / <alpha-value>)",
+        card: "rgb(var(--color-bg-card) / <alpha-value>)",
 
         // Text -------------------------------------------------------------
-        ink: "#0F1922",          // body / primary text — 15.0:1 on paper
-        "ink-soft": "#3E4C58",   // helper, source line, secondary — 7.8:1 on paper
-        "ink-mute": "#697682",   // disclaimers and timestamps — 4.6:1 on paper (AA)
+        ink: "rgb(var(--color-ink) / <alpha-value>)",
+        "ink-soft": "rgb(var(--color-ink-soft) / <alpha-value>)",
+        "ink-mute": "rgb(var(--color-ink-mute) / <alpha-value>)",
 
         // Brand / primary action — Nura navy ------------------------------
-        seal: "#0E2A3F",         // primary — 12.6:1 on white, 11.5:1 on paper
-        "seal-press": "#08192B", // pressed / hover
+        seal: "rgb(var(--color-seal) / <alpha-value>)",
+        "seal-press": "rgb(var(--color-seal-press) / <alpha-value>)",
 
         // Accent — Nura teal ----------------------------------------------
         // Used sparingly: selected-state rule on chips, letterhead dot,
         // seal-press underline. Not a primary CTA fill.
-        pin: "#2BA9A7",
-        "pin-press": "#1F8987",
-        "pin-soft": "#D6EFEE",   // tint for selected-row backgrounds
+        pin: "rgb(var(--color-pin) / <alpha-value>)",
+        "pin-press": "rgb(var(--color-pin-press) / <alpha-value>)",
+        "pin-soft": "rgb(var(--color-pin-soft) / <alpha-value>)",
 
         // Emergency (unchanged) -------------------------------------------
-        stamp: "#B91C1C",        // 7.0:1 on white, used only for emergency
-        "stamp-press": "#7F1313",
-        "stamp-bg": "#FEE9E7",
+        stamp: "rgb(var(--color-stamp) / <alpha-value>)",
+        "stamp-press": "rgb(var(--color-stamp-press) / <alpha-value>)",
+        "stamp-bg": "rgb(var(--color-stamp-bg) / <alpha-value>)",
 
         // Caution (one color, used as a left-rule, never as a card fill) ---
-        mark: "#A15C00",
-        "mark-bg": "#FFF6E6",
+        mark: "rgb(var(--color-mark) / <alpha-value>)",
+        "mark-bg": "rgb(var(--color-mark-bg) / <alpha-value>)",
       },
 
       fontFamily: {
@@ -70,7 +70,7 @@ const config: Config = {
 
       fontSize: {
         meta: ["0.8125rem", { lineHeight: "1.25rem" }],
-        label: ["0.75rem", { lineHeight: "1rem", letterSpacing: "0.06em" }],
+        label: ["0.75rem", { lineHeight: "1rem", letterSpacing: "0" }],
         body: ["0.9375rem", { lineHeight: "1.5rem" }],
         "body-lg": ["1.0625rem", { lineHeight: "1.625rem" }],
         title: ["1.375rem", { lineHeight: "1.75rem" }],

@@ -41,8 +41,21 @@ class ChatOrchestrator:
         "city hospital",
         "clinic",
         "where can i go",
+        "where should i go",
+        "where to go",
+        "what should i bring",
+        "what to bring",
+        "what should i say",
+        "what to say",
+        "front desk",
+        "directions",
+        "map",
         "saan",
         "asa",
+        "pasilidad",
+        "pumunta",
+        "dalhin",
+        "sasabihin",
     )
     _RAG_TOKENS: tuple[str, ...] = (
         "benefit",
@@ -142,7 +155,10 @@ class ChatOrchestrator:
         # Step 4: Route to HospitalService or AIRagService by intent.
         intent, intent_source = self._resolve_intent(request, inference_result)
         if intent == "HOSPITAL":
-            result = self.hospital_service.recommend(session, request.message)
+            result = self.hospital_service.recommend(
+                session,
+                self._hospital_message(request, session),
+            )
         else:
             result = self.ai_rag_service.answer(session, request.message)
 
@@ -209,20 +225,37 @@ class ChatOrchestrator:
         missing_fields: list[str],
         language: str | None,
     ) -> str:
-        if language == "en":
-            prompts = {
-                "location_city": "What city are you currently in?",
-                "benefits": "What benefits or memberships do you have (e.g., PhilHealth)?",
-            }
-            followups = [prompts[field] for field in missing_fields if field in prompts]
-            return "I need a bit more information before I can help: " + " ".join(followups)
-
-        prompts = {
-            "location_city": "Saan ka ngayon? City o barangay.",
-            "benefits": "May benefit ka ba, tulad ng PhilHealth, YAKAP, Senior, PWD, 4Ps, o HMO?",
-        }
+        language_code = self._language_code(language)
+        copy = {
+            "en": {
+                "intro": "I need a bit more information before I can help:",
+                "location_city": "Location: What city or barangay are you in?",
+                "benefits": "Benefits: Do you have PhilHealth, YAKAP, Senior, PWD, 4Ps, HMO, or none?",
+            },
+            "fil": {
+                "intro": "Kailangan ko pa ng kaunting impormasyon:",
+                "location_city": "Location: Saan ka ngayon? City o barangay.",
+                "benefits": "Benefits: May PhilHealth, YAKAP, Senior, PWD, 4Ps, HMO, o wala?",
+            },
+            "ceb": {
+                "intro": "Kinahanglan pa nako ug gamay nga impormasyon:",
+                "location_city": "Location: Asa ka karon? City o barangay.",
+                "benefits": "Benefits: Naa kay PhilHealth, YAKAP, Senior, PWD, 4Ps, HMO, o wala?",
+            },
+            "ilo": {
+                "intro": "Masapul ko pay bassit nga impormasyon:",
+                "location_city": "Location: Sadino ti ayan mo ita? City wenno barangay.",
+                "benefits": "Benefits: Adda PhilHealth, YAKAP, Senior, PWD, 4Ps, HMO, wenno awan?",
+            },
+            "hil": {
+                "intro": "Kinahanglan ko pa sang gamay nga impormasyon:",
+                "location_city": "Location: Diin ka subong? City ukon barangay.",
+                "benefits": "Benefits: May PhilHealth, YAKAP, Senior, PWD, 4Ps, HMO, ukon wala?",
+            },
+        }[language_code]
+        prompts = copy
         followups = [prompts[field] for field in missing_fields if field in prompts]
-        return "Kailangan ko pa ng kaunting impormasyon: " + " ".join(followups)
+        return f"{copy['intro']}\n" + "\n".join(followups)
 
     def _infer_intent(self, message: str) -> str:
         normalized = message.lower()
@@ -232,6 +265,49 @@ class ChatOrchestrator:
         if hospital_score > rag_score:
             return "HOSPITAL"
         return "RAG"
+
+    def _language_code(self, language: str | None) -> str:
+        normalized = (language or "fil").strip().lower()
+        if normalized == "auto":
+            return "fil"
+        if normalized in {"en", "fil", "ceb", "ilo", "hil"}:
+            return normalized
+        return "fil"
+
+    def _hospital_message(self, request: ChatRequest, session: SessionState) -> str:
+        if request.concern:
+            return request.concern
+
+        for item in session.conversation_history:
+            if item.get("role") != "user":
+                continue
+            content = item.get("content")
+            if not isinstance(content, str):
+                continue
+            candidate = content.strip()
+            if not candidate:
+                continue
+            if self._looks_like_location_or_benefits(candidate, session):
+                continue
+            return candidate
+
+        return request.message
+
+    def _looks_like_location_or_benefits(
+        self,
+        message: str,
+        session: SessionState,
+    ) -> bool:
+        normalized = message.strip().lower()
+        if not normalized:
+            return True
+        if session.location_city and normalized == session.location_city.lower():
+            return True
+
+        benefits = self._extract_benefits(message)
+        without_separators = normalized.replace(",", " ").replace("/", " ")
+        token_count = len(without_separators.split())
+        return bool(benefits) and token_count <= 8
 
     def _session_view(self, session: SessionState) -> dict[str, object]:
         return {

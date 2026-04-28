@@ -1,10 +1,12 @@
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from uuid import uuid4
 import unittest
 
 from models.session import SessionState
 from services.ai_rag_service import MockAIRagService
-from services.hospital_service import MockHospitalService
+from services.emergency_classifier import KeywordEmergencyClassifier
+from services.hospital_service import MockHospitalService, SupabaseHealthFacilitySearch
 
 
 def build_session(*, language: str = "en") -> SessionState:
@@ -35,17 +37,52 @@ class IntegratedServiceFallbackTests(unittest.TestCase):
         self.assertEqual(result.data["source"], "rag-fallback-service")
         self.assertEqual(result.data["retrieval"]["source"], "disabled")
 
-    def test_hospital_fallback_returns_facilities_and_hospitals_alias(self) -> None:
+    def test_hospital_fallback_does_not_fabricate_facilities(self) -> None:
         service = MockHospitalService()
 
         result = service.recommend(build_session(language="fil"), "Masakit ulo")
 
         self.assertEqual(result.response_type, "RECOMMENDATION")
         self.assertIn("Hindi ako doktor", result.message)
-        self.assertGreater(len(result.data["facilities"]), 0)
+        self.assertEqual(result.data["facilities"], [])
         self.assertIs(result.data["facilities"], result.data["hospitals"])
-        self.assertIn("name", result.data["facilities"][0])
-        self.assertIn("address", result.data["facilities"][0])
+        self.assertEqual(result.data["llm"]["source"], "skipped")
+        self.assertEqual(result.data["llm"]["error"], "no_verified_facilities")
+
+    def test_facility_search_does_not_reuse_unrelated_city_candidates(self) -> None:
+        search = SupabaseHealthFacilitySearch(
+            supabase_url="https://example.supabase.co",
+            supabase_key="service-role",
+            table_name="health_facilities",
+            default_region="",
+            max_candidates=10,
+            fuzzy_threshold=80,
+        )
+        search._fetch_candidates = lambda **_: [
+            {
+                "id": "1",
+                "name_of_health_facility": "Assumpta Family Hospital",
+                "street": "Magallanes St.",
+                "municipality_city": "Bangued",
+                "region": "Ilocos",
+                "is_philhealth": True,
+                "is_malasakit": False,
+            }
+        ]
+
+        result = search.search(city="Davao City", benefits=["PhilHealth"], limit=5)
+
+        self.assertEqual(result.facilities, [])
+        self.assertEqual(result.match_tier, "no_city_match")
+        self.assertEqual(result.error, "no_facility_city_match")
+
+    def test_backend_emergency_keywords_include_filpino_chat_terms(self) -> None:
+        classifier = KeywordEmergencyClassifier(
+            keywords_path=Path("data/emergency_keywords.json")
+        )
+
+        self.assertIn("masakit dibdib", classifier.matched_keywords("Masakit dibdib ko"))
+        self.assertIn("hirap huminga", classifier.matched_keywords("Hirap huminga ngayon"))
 
 
 if __name__ == "__main__":

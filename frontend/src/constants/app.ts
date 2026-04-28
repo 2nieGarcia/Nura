@@ -11,7 +11,7 @@ export const APP_COPY = {
   tagline:
     "Tutulong kaming malaman kung saan ka pwedeng magpatingin, anong benefit ang pwede mong gamitin, at ano ang sasabihin mo sa front desk.",
   privacyNote:
-    "Walang account. Walang sine-save sa server. Lahat ng sagot mo, sa device mo lang.",
+    "Walang account. Sa device mo lang naka-save ang usapan at Last Care Pass.",
   ctaStart: "Magsimula",
 
   emergencyMessage:
@@ -26,7 +26,7 @@ export const APP_COPY = {
   loadingText:
     "Tinitingnan ang mga health center na tumatanggap ng iyong benefit.",
   noResults:
-    "Wala muna kaming nakitang pasilidad sa lugar na ito. Subukan ang ibang city o barangay.",
+    "Wala muna kaming verified facility record sa lugar na ito. Pwede kang maghanap sa Maps at i-confirm sa LGU health office o PhilHealth desk.",
   resetButton: "Mag-search ulit",
 
   concernLabel: "Ilarawan ang concern o sintomas mo",
@@ -39,7 +39,7 @@ export const APP_COPY = {
 
   benefitLabel: "May benefit ka ba?",
   benefitHint:
-    "Piliin lahat ng applicable. Okay lang kung hindi sure — may libre pa ring options sa health center.",
+    "Piliin lahat ng applicable. Okay lang kung hindi sure - may libre pa ring options sa health center.",
   benefitSubmit: "Hanapin ang pasilidad",
   nextButton: "Susunod",
   noBenefitNote:
@@ -109,7 +109,7 @@ export const BENEFIT_OPTIONS: readonly BenefitOption[] = [
     key: "hasPhilcare",
     label: "PhilCare HMO",
     description:
-      "Coverage sa accredited hospitals at clinics — i-check ang plan mo.",
+      "Coverage sa accredited hospitals at clinics - i-check ang plan mo.",
   },
   {
     key: "noBenefits",

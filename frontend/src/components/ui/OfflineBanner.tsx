@@ -25,7 +25,7 @@ export function OfflineBanner({ isOnline }: OfflineBannerProps): JSX.Element | n
     <div
       role="status"
       aria-live="polite"
-      className="mx-5 mt-3 border-l-rule border-mark bg-mark-bg px-3 py-2 text-meta text-ink"
+      className="mx-4 mt-3 rounded-form border border-mark/40 bg-mark-bg px-3 py-2 text-meta text-ink sm:mx-5"
     >
       {cached ? APP_COPY.offlineWarning : APP_COPY.offlineNoCache}
     </div>

@@ -15,6 +15,7 @@ SUPPORTED_LANGUAGES: dict[str, dict[str, str | None]] = {
     "hil": {"name": "Hiligaynon", "google_code": "ceb"},
     "ilo": {"name": "Ilocano", "google_code": "ilo"},
 }
+SECTION_LABELS = ("Explanation", "Where to go", "What to bring", "What to say")
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,11 +86,47 @@ class ResponseTranslator:
             return TranslationResult(text=text, source="fallback", error=_safe_error(exc))
 
         try:
-            translated = GoogleTranslator(source="en", target=google_code).translate(text)
+            translator = GoogleTranslator(source="en", target=google_code)
+            translated = self._translate_structured_sections(text, translator)
+            if translated is None:
+                translated = translator.translate(text)
         except Exception as exc:
             return TranslationResult(text=text, source="fallback", error=_safe_error(exc))
 
         return TranslationResult(text=translated or text, source="deep-translator")
+
+    def _translate_structured_sections(self, text: str, translator: Any) -> str | None:
+        sections = self._parse_structured_sections(text)
+        if sections is None:
+            return None
+
+        translated_sections: list[str] = []
+        for label, body in sections:
+            translated_body = translator.translate(body) if body else ""
+            translated_sections.append(f"{label}:\n{translated_body or body}".strip())
+
+        return "\n\n".join(translated_sections)
+
+    def _parse_structured_sections(self, text: str) -> list[tuple[str, str]] | None:
+        positions: list[tuple[str, int, int]] = []
+        for label in SECTION_LABELS:
+            marker = f"{label}:"
+            index = text.find(marker)
+            if index < 0:
+                return None
+            positions.append((label, index, index + len(marker)))
+
+        positions.sort(key=lambda item: item[1])
+        if [label for label, _, _ in positions] != list(SECTION_LABELS):
+            return None
+
+        sections: list[tuple[str, str]] = []
+        for index, (label, _, body_start) in enumerate(positions):
+            body_end = positions[index + 1][1] if index + 1 < len(positions) else len(text)
+            body = text[body_start:body_end].strip()
+            sections.append((label, body))
+
+        return sections
 
 
 class PgVectorBenefitGuideRetriever:
@@ -263,6 +300,14 @@ class GeminiResponseComposer:
 
         bounded_text = self._ensure_disclaimer(raw_text.strip())
         translation = self.translator.translate(bounded_text, language)
+        if translation.error and _language_code(language) != "en":
+            return CompositionResult(
+                text=None,
+                source="error",
+                error=f"translation_error: {translation.error}",
+                original_text=bounded_text,
+                translation=translation,
+            )
         return CompositionResult(
             text=translation.text,
             source="gemini",
@@ -292,7 +337,32 @@ class GeminiResponseComposer:
             "what to bring, and what to say at the front desk.\n"
             "- Use retrieved benefit context when it is relevant. If the context is insufficient, "
             "say the user should confirm with PhilHealth or the facility desk.\n"
+            "- Do not invent facility names, addresses, benefits, or coverage.\n"
             "- Keep the answer concise and reassuring."
+        )
+
+    def _output_contract(self, language: str | None) -> str:
+        language_code = _language_code(language)
+        target_language = SUPPORTED_LANGUAGES[language_code]["name"]
+        if language_code == "en":
+            language_instruction = "Write in simple English."
+        elif self.translator.enabled:
+            language_instruction = (
+                f"Write simple English source text. The app will translate the section bodies "
+                f"to {target_language} while preserving the section labels."
+            )
+        else:
+            language_instruction = f"Write directly in {target_language}."
+
+        return (
+            f"{language_instruction}\n"
+            "Return exactly these four section labels, in this order, each on its own line:\n"
+            "Explanation:\n"
+            "Where to go:\n"
+            "What to bring:\n"
+            "What to say:\n"
+            "Write 1-2 short sentences under each label. Do not use markdown bullets, tables, "
+            "JSON, or extra headings."
         )
 
     def _benefit_prompt(
@@ -309,7 +379,8 @@ class GeminiResponseComposer:
             "--- Retrieved Benefit Guide Context ---\n"
             f"{self._format_chunks(guide_chunks)}\n\n"
             f"User question: {message}\n\n"
-            "Answer as Nura. Start by making clear that Nura is not a doctor."
+            f"{self._output_contract(session.language)}\n"
+            "Answer as Nura. The Explanation section must make clear that Nura is not a doctor."
         )
 
     def _facility_prompt(
@@ -329,8 +400,11 @@ class GeminiResponseComposer:
             "--- Candidate Facilities ---\n"
             f"{self._format_facilities(facilities)}\n\n"
             f"User concern: {message}\n\n"
-            "Answer as Nura. Mention the listed facilities naturally and tell the user to "
-            "seek a healthcare professional for assessment."
+            f"{self._output_contract(session.language)}\n"
+            "Answer as Nura. Use only the candidate facilities above. If no candidate facility "
+            "is listed, say that no verified matching facility was found and tell the user to "
+            "confirm with the LGU health office or PhilHealth desk. Do not name a facility "
+            "that is not in the candidate list."
         )
 
     def _format_chunks(self, guide_chunks: list[GuideChunk]) -> str:
@@ -352,13 +426,28 @@ class GeminiResponseComposer:
             name = facility.get("name") or "Unknown facility"
             address = facility.get("address") or facility.get("city") or "Address to confirm"
             accreditation = facility.get("accreditation") or "Accreditation to confirm"
-            lines.append(f"- {name} ({address}) - {accreditation}")
+            benefit = facility.get("benefit_to_claim") or "Benefit use to confirm"
+            bring = facility.get("what_to_bring") or "Requirements to confirm"
+            say = facility.get("what_to_say") or "Ask the front desk for assessment"
+            source = facility.get("data_source") or "unknown source"
+            reliability = facility.get("data_reliability") or "UNKNOWN"
+            lines.append(
+                f"- {name} ({address}) - {accreditation}. Benefit: {benefit}. "
+                f"Bring: {bring}. Say: {say}. Source: {source}, reliability: {reliability}."
+            )
         return "\n".join(lines)
 
     def _ensure_disclaimer(self, text: str) -> str:
         normalized = text.lower()
         if "not a doctor" in normalized or "hindi ako doktor" in normalized:
             return text
+        explanation_marker = "Explanation:"
+        if explanation_marker in text:
+            return text.replace(
+                explanation_marker,
+                f"{explanation_marker}\nNura is not a doctor and cannot diagnose or prescribe.",
+                1,
+            )
         return f"Nura is not a doctor and cannot diagnose or prescribe.\n\n{text}"
 
 
@@ -421,32 +510,93 @@ class RagAIRagService(AIRagService):
         guide_chunks: list[GuideChunk],
     ) -> str:
         benefits_label = ", ".join(session.benefits) if session.benefits else "your benefits"
-        if session.language == "en":
+        language_code = _language_code(session.language)
+        if language_code == "en":
             if guide_chunks:
                 return (
-                    "Nura is not a doctor and cannot diagnose or prescribe. "
-                    f"Based on the available benefit guide context for {benefits_label}, "
-                    "you may use the listed coverage only after the facility verifies your "
-                    "eligibility. Please ask the PhilHealth or facility desk to confirm the "
-                    "current requirements before receiving care."
+                    "Explanation:\n"
+                    "Nura is not a doctor and cannot diagnose or prescribe. Based on the available "
+                    f"benefit guide context for {benefits_label}, coverage still needs desk verification.\n\n"
+                    "Where to go:\n"
+                    "Ask the PhilHealth or facility benefits desk before receiving care.\n\n"
+                    "What to bring:\n"
+                    "Bring a valid ID, PhilHealth ID or MDR if available, and any benefit proof.\n\n"
+                    "What to say:\n"
+                    "Please check if I am eligible to use this benefit for my care today."
                 )
             return (
-                "Nura is not a doctor and cannot diagnose or prescribe. "
-                f"I could not reach the benefit guide database right now. For {benefits_label}, "
-                "please confirm coverage and requirements with PhilHealth or the facility desk."
+                "Explanation:\n"
+                "Nura is not a doctor and cannot diagnose or prescribe. I could not reach the "
+                f"benefit guide database right now for {benefits_label}.\n\n"
+                "Where to go:\n"
+                "Confirm coverage with PhilHealth or the facility benefits desk.\n\n"
+                "What to bring:\n"
+                "Bring a valid ID, PhilHealth ID or MDR if available, and any benefit card or proof.\n\n"
+                "What to say:\n"
+                "Please confirm my coverage and current requirements before I receive care."
+            )
+
+        if language_code == "ceb":
+            context = "base sa available benefit guide context" if guide_chunks else "dili nako maabot karon ang benefit guide database"
+            return (
+                "Explanation:\n"
+                f"Dili ako doktor ug dili ako mo-diagnose o moreseta. Para sa {benefits_label}, {context}.\n\n"
+                "Where to go:\n"
+                "Ipa-confirm sa PhilHealth desk o benefits desk sa pasilidad.\n\n"
+                "What to bring:\n"
+                "Pagdala ug valid ID, PhilHealth ID o MDR kung naa, ug proof sa benefit.\n\n"
+                "What to say:\n"
+                "Pa-check ko kung eligible ko mogamit ani nga benefit para sa serbisyo karon."
+            )
+
+        if language_code == "ilo":
+            context = "base iti available benefit guide context" if guide_chunks else "saan ko a maabot ita ti benefit guide database"
+            return (
+                "Explanation:\n"
+                f"Saanak a doktor ken saanak nga ag-diagnose wenno ag-reseta. Para iti {benefits_label}, {context}.\n\n"
+                "Where to go:\n"
+                "Ipa-confirm iti PhilHealth desk wenno benefits desk iti pasilidad.\n\n"
+                "What to bring:\n"
+                "Mangitugot iti valid ID, PhilHealth ID wenno MDR no adda, ken proof ti benefit.\n\n"
+                "What to say:\n"
+                "Pa-check koma no eligibleak nga agusar daytoy a benefit para iti serbisyo ita."
+            )
+
+        if language_code == "hil":
+            context = "base sa available benefit guide context" if guide_chunks else "indi ko maabot subong ang benefit guide database"
+            return (
+                "Explanation:\n"
+                f"Indi ako doktor kag indi ako naga-diagnose ukon naga-reseta. Para sa {benefits_label}, {context}.\n\n"
+                "Where to go:\n"
+                "Ipa-confirm sa PhilHealth desk ukon benefits desk sang pasilidad.\n\n"
+                "What to bring:\n"
+                "Magdala sang valid ID, PhilHealth ID ukon MDR kung ara, kag proof sang benefit.\n\n"
+                "What to say:\n"
+                "Pa-check ko kung eligible ako magamit ini nga benefit para sa serbisyo subong."
             )
 
         if guide_chunks:
             return (
-                "Hindi ako doktor at hindi ako nagdi-diagnose o nagrereseta. "
-                f"Base sa available benefit guide context para sa {benefits_label}, "
-                "ipa-confirm pa rin sa PhilHealth o facility desk ang eligibility at requirements "
-                "bago magpa-serbisyo."
+                "Explanation:\n"
+                "Hindi ako doktor at hindi ako nagdi-diagnose o nagrereseta. Base sa available "
+                f"benefit guide context para sa {benefits_label}, kailangan pa ring ipa-confirm ang eligibility.\n\n"
+                "Where to go:\n"
+                "Lumapit sa PhilHealth desk o benefits desk ng pasilidad.\n\n"
+                "What to bring:\n"
+                "Magdala ng valid ID, PhilHealth ID o MDR kung meron, at anumang proof ng benefit.\n\n"
+                "What to say:\n"
+                "Pa-check po kung eligible akong gamitin ang benefit na ito para sa serbisyo ngayon."
             )
         return (
-            "Hindi ako doktor at hindi ako nagdi-diagnose o nagrereseta. "
-            "Hindi ko maabot ngayon ang benefit guide database, kaya ipa-confirm muna sa "
-            f"PhilHealth o facility desk ang coverage at requirements para sa {benefits_label}."
+            "Explanation:\n"
+            "Hindi ako doktor at hindi ako nagdi-diagnose o nagrereseta. Hindi ko maabot ngayon "
+            f"ang benefit guide database para sa {benefits_label}.\n\n"
+            "Where to go:\n"
+            "Ipa-confirm muna sa PhilHealth o facility benefits desk.\n\n"
+            "What to bring:\n"
+            "Magdala ng valid ID, PhilHealth ID o MDR kung meron, at benefit card o proof kung meron.\n\n"
+            "What to say:\n"
+            "Pa-confirm po ng coverage at current requirements bago ako magpa-serbisyo."
         )
 
     def _chunk_payload(self, chunks: list[GuideChunk]) -> list[dict[str, Any]]:

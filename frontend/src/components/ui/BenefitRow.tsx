@@ -41,8 +41,8 @@ export function BenefitRow({
       />
       <label
         htmlFor={id}
-        className={[
-          "flex flex-1 cursor-pointer items-start gap-3",
+          className={[
+          "flex min-h-[44px] flex-1 cursor-pointer items-start gap-3",
           disabled ? "opacity-60 cursor-not-allowed" : "",
         ].join(" ")}
       >
@@ -52,7 +52,7 @@ export function BenefitRow({
           className={[
             "mt-0.5 grid h-[22px] w-[22px] flex-shrink-0 place-items-center",
             "rounded-stamp border-rule transition-colors duration-150",
-            selected ? "border-seal bg-seal" : "border-ink-soft bg-card",
+            selected ? "border-seal bg-seal" : "border-paper-edge bg-card",
             // Mirror the focus ring of the hidden native checkbox.
             "peer-focus-visible:outline peer-focus-visible:outline-3 peer-focus-visible:outline-seal peer-focus-visible:outline-offset-2",
           ].join(" ")}

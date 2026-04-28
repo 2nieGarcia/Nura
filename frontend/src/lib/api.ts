@@ -273,6 +273,7 @@ export async function sendChatMessage(payload: ChatRequest): Promise<ChatRespons
 
 type SubmitChatTurnInput = {
   message: string;
+  concern?: string;
   location?: string;
   benefits?: BenefitProfile;
   language?: string;
@@ -288,6 +289,7 @@ export async function submitChatTurn(
     sendChatMessage({
       session_id: activeSessionId,
       message: input.message,
+      concern: input.concern,
       language,
       location_city: input.location,
       benefits: input.benefits ? benefitsToLabels(input.benefits) : undefined,

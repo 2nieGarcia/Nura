@@ -325,10 +325,12 @@ Returns `{ "session_id": "...", "expires_at": "..." }`
 
 | `response_type` | Meaning |
 |---|---|
-| `EMERGENCY` | Keyword matched — no LLM, no session lookup |
-| `FOLLOW_UP` | Session missing city or benefits |
-| `RECOMMENDATION` | Facility results returned |
-| `RAG_ANSWER` | Benefit guide answer returned |
+| `EMERGENCY` | Emergency keyword matched. No LLM, RAG, session lookup, or facility search runs. |
+| `FOLLOW_UP` | Session is missing city or benefits. |
+| `RECOMMENDATION` | Facility search path completed. If no verified facility is found, the response is explicit and `data.facilities` is empty. |
+| `RAG_ANSWER` | Benefit guide RAG path completed or returned fallback guidance. |
+
+## Orchestration Rules
 
 ---
 
@@ -359,7 +361,7 @@ For any message containing emergency keywords (chest pain, stroke, seizure, etc.
 
 ---
 
-## Track Alignment
+If Supabase is unavailable or no candidates can be fetched, the service does not fabricate facility names. It returns an explicit no-verified-facility message and an empty `data.facilities` array.
 
 **Track:** Pangarap sa Kalusugan — Health & Well-being Access
 
@@ -408,8 +410,9 @@ For any message containing emergency keywords (chest pain, stroke, seizure, etc.
 </tr>
 </table>
 
-</div>
 
+Expected result with populated facility data: `POST /api/v1/chat` returns `RECOMMENDATION`, a disclaimer-bearing message, and facilities under `data.facilities` and `data.hospitals`. If the facility table is empty or unavailable, the same endpoint returns `RECOMMENDATION` with a no-verified-facility message and empty facility arrays.
+</div>
 ---
 
 ## License
