@@ -25,6 +25,10 @@ Built for **InnOlympics 2026 — Pangarap sa Kalusugan Track** | April 25–26, 
 [API Reference](#-api-reference) •
 [Team](#-team)
 
+<br/>
+
+**[▶️ Watch Demo on YouTube](https://www.youtube.com/watch?v=4Np_WwhCKZY)**
+
 </div>
 
 ---
